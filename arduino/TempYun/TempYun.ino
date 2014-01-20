@@ -7,6 +7,7 @@
 #include <Bridge.h>
 #include <YunServer.h>
 #include <YunClient.h>
+#include <PID_v1.h>
 
 // Listen on default port 5555, the webserver on the Yun
 // will forward there all the HTTP requests for us.
@@ -24,23 +25,27 @@ int number = 0; //counter, how many times data is read between the median call
 
 //wemo settings
 String wemo_ip;
-float wemo_temp_start;
-float wemo_temp_end;
-int wemo_on_length = 750; //how long should the device heat? (millis). this will be regarded above the starting temperature and below the stop_temperature
-int wemo_break_after_on = 30000; //how long should the device pause after heating (millis)
-int wemo_on_off_frequency = 5000; //turn on only if last on was longer than X millis ago. this will be regarded below the starting temperature
+double wemo_temp_start;
+double wemo_temp_end;
+//int wemo_on_length = 750; //how long should the device heat? (millis). this will be regarded above the starting temperature and below the stop_temperature
+//int wemo_break_after_on = 30000; //how long should the device pause after heating (millis)
+//int wemo_on_off_frequency = 5000; //turn on only if last on was longer than X millis ago. this will be regarded below the starting temperature
+bool wemo_on; // current wemo state
+unsigned long lastWeMoOnMillis; // last millis wemo was turned on
 
+//PID
+double temp_double;
+double Setpoint, Input, Output;
+int WindowSize = 5000;
+unsigned long windowStartTime;
+
+//Specify the links and initial tuning parameters
+PID myPID(&Input, &Output, &Setpoint,0.5,1,1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
 
 // temperature settings
 float temp_range_min;
 float temp_range_max;
 float reference_voltage;
-
-// current wemo state
-bool wemo_on;
-
-// last millis wemo was turned on
-unsigned long lastWeMoOnMillis;
 
 void setup() {
   //EXTERNAL AREF Voltage should be 1.134V
@@ -66,6 +71,16 @@ void setup() {
 
   lastTime = millis();
   lastWeMoOnMillis = millis();
+  
+  //PID
+  windowStartTime = millis();
+  //initialize the variables we're linked to
+  Setpoint = wemo_temp_end;
+  //tell the PID to range between 0 and the full window size
+  myPID.SetOutputLimits(0, WindowSize);
+  //turn the PID on
+  myPID.SetMode(AUTOMATIC);
+  
 }
 
 String getValue(String data, char separator, int index)
@@ -140,6 +155,7 @@ void refreshConfiguration() {
   Serial.println(temp_range_min);
   Serial.println(temp_range_max);
 
+  Setpoint = wemo_temp_end;
   setWeMo(false);
 }
 
@@ -234,44 +250,79 @@ void loop() {
     number = 0;
   }
 
-  // Turn WeMo on or off
-  if (wemo_ip.length() > 0) {
-    float temperature = calculateTemperature(median(rawData));
-    unsigned long lastOnMillisDelta = millis() - lastWeMoOnMillis; // Limit on-off frequency.
+//  // Turn WeMo on or off
+//  if (wemo_ip.length() > 0) {
+//    float temperature = calculateTemperature(median(rawData));
+//    unsigned long lastOnMillisDelta = millis() - lastWeMoOnMillis; // Limit on-off frequency.
+//
+//    //wemo is off
+//    if (!wemo_on) {
+//      //temperature below starting temperature
+//      if (temperature < wemo_temp_start) {
+//        //regard on off frequency if below the start temperature
+//        if (lastOnMillisDelta > wemo_on_off_frequency) {
+//          Serial.print("Temp: ");
+//          Serial.print(temperature);
+//          Serial.println(" -> on");
+//          lastWeMoOnMillis = millis();
+//          setWeMo(true);
+//        }
+//      }
+//      //temperature is above starting temperature (else) but below end temperature
+//      else if (temperature < wemo_temp_end) {
+//        if (lastOnMillisDelta > wemo_break_after_on) {
+//          Serial.print("Temp: ");
+//          Serial.print(temperature);
+//          Serial.println(" -> on");
+//          lastWeMoOnMillis = millis();
+//          setWeMo(true);
+//        }
+//      }
+//    }
+//    //wemo is on
+//    else if (wemo_on) {
+//      //turn off if higher than max heat temperature || longer than on_length
+//      if (temperature > wemo_temp_end || lastOnMillisDelta > wemo_on_length) {
+//        Serial.print("Temp: ");
+//        Serial.print(temperature);
+//        Serial.println(" -> off");
+//        setWeMo(false);
+//      }
+//    }
+//  }
 
-    //wemo is off
-    if (!wemo_on) {
-      //temperature below starting temperature
-      if (temperature < wemo_temp_start) {
-        //regard on off frequency if below the start temperature
-        if (lastOnMillisDelta > wemo_on_off_frequency) {
-          Serial.print("Temp: ");
-          Serial.print(temperature);
-          Serial.println(" -> on");
-          lastWeMoOnMillis = millis();
-          setWeMo(true);
-        }
-      }
-      //temperature is above starting temperature (else) but below end temperature
-      else if (temperature < wemo_temp_end) {
-        if (lastOnMillisDelta > wemo_break_after_on) {
-          Serial.print("Temp: ");
-          Serial.print(temperature);
-          Serial.println(" -> on");
-          lastWeMoOnMillis = millis();
-          setWeMo(true);
-        }
-      }
+  //PID
+  temp_double = calculateTemperature(median(rawData));
+  Input = temp_double;
+  myPID.Compute();
+
+  /************************************************
+   * turn the output pin on/off based on pid output
+   ************************************************/
+  if(millis() - windowStartTime > WindowSize)
+  { //time to shift the Relay Window
+    windowStartTime += WindowSize;
+  }
+  if(Output < millis() - windowStartTime) {
+    if (wemo_on){
+      Serial.println("SENDING OFF...");
+      setWeMo(false);
+      Serial.println("SENT");
+      Serial.println("...");
     }
-    //wemo is on
-    else if (wemo_on) {
-      //turn off if higher than max heat temperature || longer than on_length
-      if (temperature > wemo_temp_end || lastOnMillisDelta > wemo_on_length) {
-        Serial.print("Temp: ");
-        Serial.print(temperature);
-        Serial.println(" -> off");
-        setWeMo(false);
-      }
+  }
+  else {
+    if (!wemo_on){
+      Serial.println("SENDING ON...");
+      Serial.print("Output - ");
+      Serial.println(Output);
+      Serial.print("Input - ");
+      Serial.println(Input);
+      Serial.print("Setpoint - ");
+      Serial.println(Setpoint);
+      setWeMo(true);
+      Serial.println("SENT");
+      Serial.println("...");
     }
   }
 
@@ -315,7 +366,6 @@ void setWeMo(bool on) {
     p.addParameter(wemo_ip);
     p.run();
 
-    Serial.println(phpCall);
   }
 }
 
