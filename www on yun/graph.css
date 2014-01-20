@@ -1,0 +1,66 @@
+@CHARSET "UTF-8";
+
+body {
+  font: 10px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+  stroke-width:1px;
+}
+
+.lineContext {
+	fill: none;
+	stroke-width: 2px;
+ 	stroke:black;
+}
+
+.x.axis path {
+  /*display: none;*/
+}
+
+.line {
+  fill: none;
+  stroke-width: 1px;
+  stroke:black;
+}
+
+.hoverLine {
+	stroke:#aaa;
+	stroke-dasharray:3,7;
+	stroke-width:1px;
+}
+
+.hoverCircle {
+	stroke:none;
+	fill:red;
+}
+
+.overlay {
+  fill: none;
+  pointer-events: all;
+}
+
+.brush .extent {
+  stroke: #f00;
+  stroke-dasharray:1,5;
+  stroke-width:1px;
+  fill: #fc0;
+  fill-opacity: .125;
+  shape-rendering: crispEdges;
+}
+
+.currentTempRect {
+	fill:#7a0;
+	fill-opacity:.5;
+	stroke:none;
+}
+
+.currentTempText {
+	fill:white;
+	font-size:2em;
+	fill-opacity:.8;
+}
