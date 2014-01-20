@@ -25,7 +25,7 @@ var x = d3.time.scale().range([0, width]),
 
 var xAxis = d3.svg.axis().scale(x).orient("bottom"),
 	xAxis2 = d3.svg.axis().scale(x2).orient("bottom"),
-	yAxis = d3.svg.axis().scale(y).tickSubdivide(3).tickSize(10,5,0).orient("left");
+	yAxis = d3.svg.axis().scale(y).ticks(20).tickSubdivide(10).tickSize(10,5,0).orient("left");
 
 var test1 = "2014-01-14 01:00:00";
 var test2 = "2014-01-14 22:45:00";

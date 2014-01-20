@@ -1,4 +1,6 @@
 <?php
+$time_start = microtime(true); 
+
 include('./init.php');
 
 if ($localTest !== true){
@@ -18,6 +20,11 @@ $wemoIp = $temperatureSettings['wemo_ip']; //ip adress of wemo
 $wemoTempMin = $temperatureSettings['wemo_temp_min']; //temperature at which wemo will start
 $wemoTempMax = $temperatureSettings['wemo_temp_max']; //temperature at which wemo will stop
 
+//PID settings
+$pid_kp = $temperatureSettings['pid_kp']; //P of PID
+$pid_ki = $temperatureSettings['pid_ki']; //I of PID
+$pid_kd = $temperatureSettings['pid_kd']; //D of PID
+
 if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GET['refVolt'])){
 	//read GET
 	$newTempRangeStart = $_GET['tempRangeStart'];
@@ -26,12 +33,18 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 	$newWemoIp = $_GET['wemoIp'];
 	$newWemoTempMin = $_GET['wemoTempMin'];
 	$newWemoTempMax = $_GET['wemoTempMax'];
+	$newPid_kp = $_GET['pid_kp'];
+	$newPid_ki = $_GET['pid_ki'];
+	$newPid_kd = $_GET['pid_kd'];
 	
 	settype($newTempRangeStart,'integer');
 	settype($newTempRangeEnd,'integer');
 	settype($newRefVoltage,'float');
 	settype($newWemoTempMin,'float');
 	settype($newWemoTempMax,'float');
+	settype($newPid_kp,'float');
+	settype($newPid_ki,'float');
+	settype($newPid_kd,'float');
 	
 	if ($newRefVoltage == 0){
 		$errorMessage = "voltage must not be 0";
@@ -51,6 +64,12 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 		$errorMessage = "end must be within range";
 	} else if ($newTempRangeEnd < 0 || $newTempRangeEnd > 100){
 		$errorMessage = "end must be within range";
+	} else if ($newPid_kp < 0 || $newPid_kp > 100){
+		$errorMessage = "PID-kp must be within range";
+	} else if ($newPid_ki < 0 || $newPid_ki > 100){
+		$errorMessage = "PID-ki must be within range";
+	} else if ($newPid_kd < 0 || $newPid_kd > 100){
+		$errorMessage = "PID-kd must be within range";
 	}
 	
 	if ($errorMessage){
@@ -62,7 +81,10 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 				&& $tempRefVoltage == $newRefVoltage
 				&& $wemoIp == $newWemoIp
 				&& $wemoTempMin == $newWemoTempMin
-				&& $wemoTempMax == $newWemoTempMax){
+				&& $wemoTempMax == $newWemoTempMax
+				&& $pid_kp == $newPid_kp
+				&& $pid_ki == $newPid_ki
+				&& $pid_kd == $newPid_kd){
 			$notice = "Same values. Nothing was saved";
 		} else {
 			$query[] = "BEGIN";
@@ -72,7 +94,10 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 				referenceVoltage = $newRefVoltage,
 				wemo_ip = '$newWemoIp',
 				wemo_temp_min = $newWemoTempMin,
-				wemo_temp_max = $newWemoTempMax";
+				wemo_temp_max = $newWemoTempMax,
+				pid_kp = $newPid_kp,
+				pid_ki = $newPid_ki,
+				pid_kd = $newPid_kd";
 			//clear graph only if thermometer settings where changed
 			if ($tempRangeStart != $newTempRangeStart || $tempRangeEnd != $newTempRangeEnd || $tempRefVoltage != $newRefVoltage	){
 				$query[] = "DELETE FROM temperatures";
@@ -96,17 +121,28 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 			$wemoIp = $newWemoIp;
 			$wemoTempMin = $newWemoTempMin;
 			$wemoTempMax = $newWemoTempMax;
+			$pid_kp = $newPid_kp;
+			$pid_ki = $newPid_ki;
+			$pid_kd = $newPid_kd;
 
 			if (!$localTest){
+				$time_1 = microtime(true);
 				$url = $url_arduino . "arduino/refreshConfiguration/1";
 				$result = file_get_contents($url);
 				$notice .= "<br />" . "Configuration refreshed";
+				$time_2 = microtime(true);
 			}
 			
 		}
 	}
 }
 
+$time_end = microtime(true);
+$execution_time = ($time_end - $time_start);
+
+$sub_time = ($time_2 - $time_1);
+$exectime = '<p><b>Total Execution Time:</b> '. $execution_time.' sec</p>';
+$subtime = '<p><b>Sub Execution Time:</b> '. $sub_time.' sec</p>';
 ?>
 
 <!DOCTYPE html>
@@ -124,9 +160,14 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 <p><label>Wemo IP</label><input input type="text" value="<?php echo $wemoIp; ?>" name="wemoIp" pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}" /></p>
 <p><label>Wemo start °C </label><input type="number" value="<?php echo $wemoTempMin; ?>" name="wemoTempMin" min="0" max="100" step="0.01" required /></p>
 <p><label>Wemo end °C </label><input type="number" value="<?php echo $wemoTempMax; ?>" name="wemoTempMax" min="0" max="100" step="0.01" required /></p>
+<p><label>PID kp </label><input type="number" value="<?php echo $pid_kp; ?>" name="pid_kp" min="0" max="1000" step="0.01" /></p>
+<p><label>PID ki </label><input type="number" value="<?php echo $pid_ki; ?>" name="pid_ki" min="0" max="1000" step="0.01" /></p>
+<p><label>PID kd </label><input type="number" value="<?php echo $pid_kd; ?>" name="pid_kd" min="0" max="1000" step="0.01" /></p>
 
 <button>Save settings and reset graph</button>
 </form>
 <br/>
 <a href="graph.php">discard changes and go back to graph</a>
+<?php echo $exectime; ?>
+<?php echo $subtime; ?>
 </body>

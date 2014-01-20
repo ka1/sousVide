@@ -38,6 +38,10 @@ double temp_double;
 double Setpoint, Input, Output;
 int WindowSize = 5000;
 unsigned long windowStartTime;
+//unsigned long lastPIDCall;
+double pid_kp;
+double pid_ki;
+double pid_kd;
 
 //Specify the links and initial tuning parameters
 PID myPID(&Input, &Output, &Setpoint,0.5,1,1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
@@ -78,6 +82,8 @@ void setup() {
   Setpoint = wemo_temp_end;
   //tell the PID to range between 0 and the full window size
   myPID.SetOutputLimits(0, WindowSize);
+  //set sample time
+  myPID.SetSampleTime(500);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
   
@@ -142,10 +148,21 @@ void refreshConfiguration() {
   //parse WeMo start temperature
   wemo_temp_start_str.toCharArray(floatbuf, sizeof(floatbuf));
   wemo_temp_start = atof(floatbuf);
-
   //parse WeMo end temperature
   wemo_temp_end_str.toCharArray(floatbuf, sizeof(floatbuf));
   wemo_temp_end = atof(floatbuf);
+  
+  //read PID values
+  String pid_kp_str = getValue(str, '|', 8);
+  String pid_ki_str = getValue(str, '|', 9);
+  String pid_kd_str = getValue(str, '|', 10);
+  pid_kp_str.toCharArray(floatbuf, sizeof(floatbuf));
+  pid_kp = atof(floatbuf);
+  pid_ki_str.toCharArray(floatbuf, sizeof(floatbuf));
+  pid_ki = atof(floatbuf);
+  pid_kd_str.toCharArray(floatbuf, sizeof(floatbuf));
+  pid_kd = atof(floatbuf);
+
 
   Serial.println("refreshed");
   Serial.println(wemo_temp_end);
@@ -154,8 +171,12 @@ void refreshConfiguration() {
   Serial.println(reference_voltage);
   Serial.println(temp_range_min);
   Serial.println(temp_range_max);
+  Serial.println(pid_kp);
+  Serial.println(pid_ki);
+  Serial.println(pid_kd);
 
   Setpoint = wemo_temp_end;
+  myPID.SetTunings(pid_kp,pid_ki,pid_kd);
   setWeMo(false);
 }
 
