@@ -1,3 +1,4 @@
+
 /*
   Arduino YUN - WEMO - Sous Vide
   Felix Heidrich and Kai Kasugai
@@ -13,7 +14,6 @@
 // will forward there all the HTTP requests for us.
 YunServer server;
 unsigned long lastTime;
-//Process p;
 bool is_ready = false;
 
 //define the size of the median buffer
@@ -27,11 +27,10 @@ int number = 0; //counter, how many times data is read between the median call
 String wemo_ip;
 double wemo_temp_start;
 double wemo_temp_end;
-//int wemo_on_length = 750; //how long should the device heat? (millis). this will be regarded above the starting temperature and below the stop_temperature
-//int wemo_break_after_on = 30000; //how long should the device pause after heating (millis)
-//int wemo_on_off_frequency = 5000; //turn on only if last on was longer than X millis ago. this will be regarded below the starting temperature
 bool wemo_on; // current wemo state
 unsigned long lastWeMoOnMillis; // last millis wemo was turned on
+Process wemoProcess;
+bool wemoProcessStarted = false;
 
 //PID
 double temp_double;
@@ -42,9 +41,15 @@ unsigned long windowStartTime;
 double pid_kp;
 double pid_ki;
 double pid_kd;
+//byte ATuneModeRemember=2;
+//double aTuneStep=500;
+//double aTuneNoise=1;
+//unsigned int aTuneLookBack=20;
+//boolean tuning = false;
 
 //Specify the links and initial tuning parameters
 PID myPID(&Input, &Output, &Setpoint,850,0.5,0.1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
+//PID_ATune aTune(&Input, &Output);
 
 // temperature settings
 float temp_range_min;
@@ -81,9 +86,9 @@ void setup() {
   //initialize the variables we're linked to
   Setpoint = wemo_temp_end;
   //tell the PID to range between 0 and the full window size
-  myPID.SetOutputLimits(0, WindowSize);
+  myPID.SetOutputLimits(0, WindowSize - 1000); //- 1000 for a bit of time for the php process to return value
   //set sample time
-  myPID.SetSampleTime(500);
+  myPID.SetSampleTime(1000);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
   
@@ -198,7 +203,7 @@ void loop() {
   // There is a new client?
   if (client) {
     // Process request
-    process(client);
+    doProcess(client);
 
     // Close connection and free resources.
     client.stop();
@@ -210,14 +215,15 @@ void loop() {
   rawDataIdx %= RAWDATASIZE;
   number++;
 
-  Process p;
+//  Process p;
 
   //if not yet ready (the time might not have been updated yet)
   if (!is_ready) {
     //check every 5 seconds if ready
     if (millis() - lastTime > 5000) {
+      Process p;
       String answer = "";
-      //See if there is no entry yet, of if the last entry is younger than the current time. if the current time is younger than the last entry, we can not have the write time yet.
+      //See if there is no entry yet, or if the last entry is younger than the current time. if the current time is younger than the last entry, we can not have the write time yet.
       String timecheckQuery = "SELECT (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures') IS NULL";
       timecheckQuery += " OR (SELECT STRFTIME('%s','NOW') > (SELECT timestamp FROM temperatures WHERE temp_ID = (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures')));";
 
@@ -226,15 +232,21 @@ void loop() {
       p.addParameter(timecheckQuery);
       p.run();
 
+      Serial.println(timecheckQuery);
+
       //check output
       while (p.available() > 0) {
         char c = p.read();
         answer += c;
       }
 
+      Serial.println(answer);
+
       if (answer == "1\n") {
         is_ready = true;
       }
+      
+      Serial.println("not ready");
 
       lastTime = millis();
     }
@@ -248,7 +260,9 @@ void loop() {
     sql += median(rawData); //calculate median from last N read values
     sql += ");";
 
-    // opkg install sqlite3
+    Serial.println(sql);
+    
+    Process p;
     p.begin("sqlite3");
 
     // the database file name
@@ -266,84 +280,47 @@ void loop() {
     digitalWrite(13, LOW);
 
 
-    //Serial.print("number: ");
-    //Serial.println(number);
     number = 0;
   }
 
-//  // Turn WeMo on or off
-//  if (wemo_ip.length() > 0) {
-//    float temperature = calculateTemperature(median(rawData));
-//    unsigned long lastOnMillisDelta = millis() - lastWeMoOnMillis; // Limit on-off frequency.
-//
-//    //wemo is off
-//    if (!wemo_on) {
-//      //temperature below starting temperature
-//      if (temperature < wemo_temp_start) {
-//        //regard on off frequency if below the start temperature
-//        if (lastOnMillisDelta > wemo_on_off_frequency) {
-//          Serial.print("Temp: ");
-//          Serial.print(temperature);
-//          Serial.println(" -> on");
-//          lastWeMoOnMillis = millis();
-//          setWeMo(true);
-//        }
-//      }
-//      //temperature is above starting temperature (else) but below end temperature
-//      else if (temperature < wemo_temp_end) {
-//        if (lastOnMillisDelta > wemo_break_after_on) {
-//          Serial.print("Temp: ");
-//          Serial.print(temperature);
-//          Serial.println(" -> on");
-//          lastWeMoOnMillis = millis();
-//          setWeMo(true);
-//        }
-//      }
-//    }
-//    //wemo is on
-//    else if (wemo_on) {
-//      //turn off if higher than max heat temperature || longer than on_length
-//      if (temperature > wemo_temp_end || lastOnMillisDelta > wemo_on_length) {
-//        Serial.print("Temp: ");
-//        Serial.print(temperature);
-//        Serial.println(" -> off");
-//        setWeMo(false);
-//      }
-//    }
-//  }
-
-  //PID
-  temp_double = calculateTemperature(median(rawData));
-  Input = temp_double;
-  myPID.Compute();
-
-  /************************************************
-   * turn the output pin on/off based on pid output
-   ************************************************/
-  if(millis() - windowStartTime > WindowSize)
-  { //time to shift the Relay Window
-    windowStartTime += WindowSize;
-  }
-  if(Output < millis() - windowStartTime) {
-    if (wemo_on){
-      Serial.println("SENDING OFF...");
-      setWeMo(false);
-      Serial.println("SENT");
-      Serial.println("...");
-    }
-  }
-  else {
-    if (!wemo_on){
-      Serial.println("SENDING ON...");
-      Serial.print("Output - ");
-      Serial.println(Output);
-      Serial.print("Input - ");
-      Serial.println(Input);
-      Serial.print("Setpoint - ");
-      Serial.println(Setpoint);
-      setWeMo(true);
-      Serial.println("SENT");
-      Serial.println("...");
+  if (is_ready) {
+    //PID
+    temp_double = calculateTemperature(median(rawData));
+    Input = temp_double;
+    myPID.Compute();
+  
+    /************************************************
+     * turn the output pin on/off based on pid output
+     ************************************************/
+    if(millis() - windowStartTime > WindowSize)
+    { //time to shift the Relay Window
+      windowStartTime += WindowSize;
+      
+      if(wemoProcessStarted && (wemoProcess.running() || wemoProcess.available())) {
+        Serial.println("WEMO ERROR. STILL RUNNING AFTER WINDOW");
+//        wemoProcess.close();
+      }
+      
+      if (Output > (WindowSize - 1000)) {
+        Serial.println("PID LIBRARY ERROR"); // sanity check
+      }
+      
+      if (Output > 50) {
+              
+        Serial.print("ON OFF Output (MS) - ");
+        Serial.println(Output);
+        Serial.print("Input - ");
+        Serial.println(Input);    
+      
+        wemoProcess.begin("php-cli");
+        String phpCall = "/mnt/sda1/wemo/wemo_switch_onOffTimed.php";
+        wemoProcess.addParameter(phpCall);
+        wemoProcess.addParameter(wemo_ip);
+        String strOutput = String(Output);
+        wemoProcess.addParameter(strOutput);
+        wemoProcess.runAsynchronously();
+        wemoProcessStarted = true;
+      }
     }
   }
 
@@ -403,11 +380,9 @@ int indexOfMax(int array[]) {
   return maxIndex;
 }
 
-void process(YunClient client) {
+void doProcess(YunClient client) {
   // read the command
   String command = client.readStringUntil('/');
-
-  //Serial.println(command);
 
   if (command == "temp") {
     tempCommand(client);

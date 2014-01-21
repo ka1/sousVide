@@ -137,9 +137,11 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 			$pid_kd = $newPid_kd;
 
 			if (!$localTest){
+				$timer->addtime('before http request');
 				$url = $url_arduino . "arduino/refreshConfiguration/1";
 				$result = file_get_contents($url);
 				$notice .= "<br />" . "Configuration refreshed";
+				$timer->addtime('after http request');
 			}
 			
 		}
