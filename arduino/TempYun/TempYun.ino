@@ -36,7 +36,7 @@ unsigned long lastWeMoOnMillis; // last millis wemo was turned on
 //PID
 double temp_double;
 double Setpoint, Input, Output;
-int WindowSize = 5000;
+int WindowSize = 30000;
 unsigned long windowStartTime;
 //unsigned long lastPIDCall;
 double pid_kp;
