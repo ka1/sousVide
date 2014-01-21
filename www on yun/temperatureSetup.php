@@ -69,7 +69,7 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 		$errorMessage = "end must be within range";
 	} else if ($newTempRangeEnd < 0 || $newTempRangeEnd > 100){
 		$errorMessage = "end must be within range";
-	} else if ($newPid_kp < 0 || $newPid_kp > 100){
+	} else if ($newPid_kp < 0 || $newPid_kp > 1000){
 		$errorMessage = "PID-kp must be within range";
 	} else if ($newPid_ki < 0 || $newPid_ki > 100){
 		$errorMessage = "PID-ki must be within range";

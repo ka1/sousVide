@@ -36,7 +36,7 @@ unsigned long lastWeMoOnMillis; // last millis wemo was turned on
 //PID
 double temp_double;
 double Setpoint, Input, Output;
-int WindowSize = 30000;
+int WindowSize = 10000;
 unsigned long windowStartTime;
 //unsigned long lastPIDCall;
 double pid_kp;
@@ -44,7 +44,7 @@ double pid_ki;
 double pid_kd;
 
 //Specify the links and initial tuning parameters
-PID myPID(&Input, &Output, &Setpoint,0.5,1,1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
+PID myPID(&Input, &Output, &Setpoint,850,0.5,0.1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
 
 // temperature settings
 float temp_range_min;
