@@ -1,7 +1,7 @@
 <?php
-$time_start = microtime(true); 
-
 include('./init.php');
+include('./inc_debugging.php');
+$timer = new splittime();
 
 if ($localTest !== true){
 	$db = new SQLite3("/mnt/sda1/temperatures.sqlite");
@@ -9,6 +9,8 @@ if ($localTest !== true){
 } else {
 	$db = new SQLite3("./temperatures.sqlite"); 
 }
+
+$timer->addtime('after db init');
 
 $temperatureSettings = $db->querySingle("SELECT * FROM `thermosetup`",true);
 $tempRangeStart = $temperatureSettings['set_min'];
@@ -24,6 +26,9 @@ $wemoTempMax = $temperatureSettings['wemo_temp_max']; //temperature at which wem
 $pid_kp = $temperatureSettings['pid_kp']; //P of PID
 $pid_ki = $temperatureSettings['pid_ki']; //I of PID
 $pid_kd = $temperatureSettings['pid_kd']; //D of PID
+
+$timer->addtime('read database');
+
 
 if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GET['refVolt'])){
 	//read GET
@@ -72,6 +77,8 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 		$errorMessage = "PID-kd must be within range";
 	}
 	
+	$timer->addtime('validation');
+	
 	if ($errorMessage){
 		echo "Error in values. Nothing was saved";
 	} else {
@@ -87,6 +94,8 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 				&& $pid_kd == $newPid_kd){
 			$notice = "Same values. Nothing was saved";
 		} else {
+			$timer->addtime('before saving');
+			$query = array();
 			$query[] = "BEGIN";
 			$query[] = "UPDATE thermosetup SET
 				set_min = $newTempRangeStart,
@@ -105,14 +114,16 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 				$notice .= "Database cleared";
 			}
 			$query[] = "COMMIT TRANSACTION ";
-			$query[] = "VACUUM";
+			//$query[] = "VACUUM";
 			
 			foreach($query AS $q){
 				if (!$db->query($q)){
 					echo "<div style='color:red'>Error in query:$q</div>";
 				}
+				$timer->addtime("done: " . $q);
 			}
 			$notice .= "Values saved";
+			$timer->addtime('after saving');
 			
 			//save for form
 			$tempRangeStart = $newTempRangeStart;
@@ -126,23 +137,17 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 			$pid_kd = $newPid_kd;
 
 			if (!$localTest){
-				$time_1 = microtime(true);
 				$url = $url_arduino . "arduino/refreshConfiguration/1";
 				$result = file_get_contents($url);
 				$notice .= "<br />" . "Configuration refreshed";
-				$time_2 = microtime(true);
 			}
 			
 		}
 	}
 }
 
-$time_end = microtime(true);
-$execution_time = ($time_end - $time_start);
+$timer->addtime('end of php block');
 
-$sub_time = ($time_2 - $time_1);
-$exectime = '<p><b>Total Execution Time:</b> '. $execution_time.' sec</p>';
-$subtime = '<p><b>Sub Execution Time:</b> '. $sub_time.' sec</p>';
 ?>
 
 <!DOCTYPE html>
@@ -168,6 +173,5 @@ $subtime = '<p><b>Sub Execution Time:</b> '. $sub_time.' sec</p>';
 </form>
 <br/>
 <a href="graph.php">discard changes and go back to graph</a>
-<?php echo $exectime; ?>
-<?php echo $subtime; ?>
+<div><?php $timer->stoptimer(); ?></div>
 </body>
