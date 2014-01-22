@@ -20,27 +20,26 @@ bool is_ready = false;
 #define RAWDATASIZE 100
 #define RAWDATAMEDIANIDX RAWDATASIZE / 2
 int rawData[RAWDATASIZE];
-int rawDataIdx = 0;
-int number = 0; //counter, how many times data is read between the median call
+byte rawDataIdx = 0;
+byte number = 0; //counter, how many times data is read between the median call
 
 //wemo settings
 String wemo_ip;
-double wemo_temp_start;
-double wemo_temp_end;
+int wemo_temp_start; //*10
+int wemo_temp_end; //*10
 bool wemo_on; // current wemo state
 unsigned long lastWeMoOnMillis; // last millis wemo was turned on
 Process wemoProcess;
 bool wemoProcessStarted = false;
 
 //PID
-double temp_double;
 double Setpoint, Input, Output;
-int WindowSize = 10000;
+byte WindowSize = 10; //in seconds = *1000
 unsigned long windowStartTime;
 //unsigned long lastPIDCall;
-double pid_kp;
-double pid_ki;
-double pid_kd;
+int pid_kp; //*100
+int pid_ki; //*100
+int pid_kd; //*100
 //byte ATuneModeRemember=2;
 //double aTuneStep=500;
 //double aTuneNoise=1;
@@ -52,9 +51,9 @@ PID myPID(&Input, &Output, &Setpoint,850,0.5,0.1, DIRECT); //2,5,1 or 1,0.05,0.2
 //PID_ATune aTune(&Input, &Output);
 
 // temperature settings
-float temp_range_min;
-float temp_range_max;
-float reference_voltage;
+int temp_range_min; //*10
+int temp_range_max; //*10
+int reference_voltage; //*1000
 
 void setup() {
   //EXTERNAL AREF Voltage should be 1.134V
@@ -84,9 +83,9 @@ void setup() {
   //PID
   windowStartTime = millis();
   //initialize the variables we're linked to
-  Setpoint = wemo_temp_end;
+  Setpoint = (float)wemo_temp_end / 10.0;
   //tell the PID to range between 0 and the full window size
-  myPID.SetOutputLimits(0, WindowSize - 1000); //- 1000 for a bit of time for the php process to return value
+  myPID.SetOutputLimits(0, (WindowSize * 1000) - 1000); //- 1000 for a bit of time for the php process to return value
   //set sample time
   myPID.SetSampleTime(1000);
   //turn the PID on
@@ -114,7 +113,7 @@ String getValue(String data, char separator, int index)
 void refreshConfiguration() {
   Process p;
 
-  String configQuery = "SELECT * FROM `thermosetup`;";
+  String configQuery = "SELECT set_min * 10,set_max * 10, referenceVoltage * 1000, alarm_min * 10, alarm_max * 10, wemo_ip, wemo_temp_min * 10, wemo_temp_max * 10, pid_kp * 100, pid_ki * 100, pid_kd * 100 FROM `thermosetup`;";
 
   p.begin("sqlite3");
   p.addParameter("/mnt/sda1/temperatures.sqlite");
@@ -133,43 +132,29 @@ void refreshConfiguration() {
 
   // read temperature settings
   String reference_voltage_str = getValue(str, '|', 2);
-  String temp_range_min_str = getValue(str, '|', 0);
-  String temp_range_max_str = getValue(str, '|', 1);
+  reference_voltage = reference_voltage_str.toInt();
 
-  // parse temperature settings
-  char floatbuf[32]; // make this at least big enough for the whole string
-  reference_voltage_str.toCharArray(floatbuf, sizeof(floatbuf));
-  reference_voltage = atof(floatbuf);
-  temp_range_min_str.toCharArray(floatbuf, sizeof(floatbuf));
-  temp_range_min = atof(floatbuf);
-  temp_range_max_str.toCharArray(floatbuf, sizeof(floatbuf));
-  temp_range_max = atof(floatbuf);
+  String temp_range_min_str = getValue(str, '|', 0);
+  temp_range_min = temp_range_min_str.toInt();
+  String temp_range_max_str = getValue(str, '|', 1);
+  temp_range_max = temp_range_max_str.toInt();
 
   //read WeMo values
   wemo_ip = getValue(str, '|', 5);
   String wemo_temp_start_str = getValue(str, '|', 6);
+  wemo_temp_start = wemo_temp_start_str.toInt();
   String wemo_temp_end_str = getValue(str, '|', 7);
+  wemo_temp_end = wemo_temp_end_str.toInt();
 
-  //parse WeMo start temperature
-  wemo_temp_start_str.toCharArray(floatbuf, sizeof(floatbuf));
-  wemo_temp_start = atof(floatbuf);
-  //parse WeMo end temperature
-  wemo_temp_end_str.toCharArray(floatbuf, sizeof(floatbuf));
-  wemo_temp_end = atof(floatbuf);
-  
   //read PID values
   String pid_kp_str = getValue(str, '|', 8);
   String pid_ki_str = getValue(str, '|', 9);
   String pid_kd_str = getValue(str, '|', 10);
-  pid_kp_str.toCharArray(floatbuf, sizeof(floatbuf));
-  pid_kp = atof(floatbuf);
-  pid_ki_str.toCharArray(floatbuf, sizeof(floatbuf));
-  pid_ki = atof(floatbuf);
-  pid_kd_str.toCharArray(floatbuf, sizeof(floatbuf));
-  pid_kd = atof(floatbuf);
+  pid_kp = pid_kp_str.toInt();
+  pid_ki = pid_ki_str.toInt();
+  pid_kd = pid_kd_str.toInt();
 
-
-  Serial.println("refreshed");
+  Serial.println(F("refreshed"));
   Serial.println(wemo_temp_end);
   Serial.println(wemo_temp_start);
   Serial.println(wemo_ip);
@@ -180,16 +165,14 @@ void refreshConfiguration() {
   Serial.println(pid_ki);
   Serial.println(pid_kd);
 
-  Setpoint = wemo_temp_end;
-  myPID.SetTunings(pid_kp,pid_ki,pid_kd);
+  Setpoint = (float)wemo_temp_end / 10.0;
+  myPID.SetTunings((float) pid_kp / 100.0,(float) pid_ki / 100.0,(float) pid_kd / 100.0);
   setWeMo(false);
 }
 
 float calculateTemperature(int rawTemp) {
-
-  float raw = rawTemp;
-  float temp = rawTemp / 1023.0 * reference_voltage;
-  temp = temp_range_min + (temp * (temp_range_max - temp_range_min));
+  float temp = ((float)rawTemp / 1023.0) * ((float) reference_voltage / 1000.0);
+  temp = ((float) temp_range_min / 10.0) + (temp * (((float)temp_range_max / 10.0) - ((float)temp_range_min / 10.0)));
   return temp;
 }
 
@@ -246,7 +229,7 @@ void loop() {
         is_ready = true;
       }
       
-      Serial.println("not ready");
+      Serial.println(F("not ready"));
 
       lastTime = millis();
     }
@@ -285,31 +268,30 @@ void loop() {
 
   if (is_ready) {
     //PID
-    temp_double = calculateTemperature(median(rawData));
-    Input = temp_double;
+    Input = calculateTemperature(median(rawData));
     myPID.Compute();
   
     /************************************************
      * turn the output pin on/off based on pid output
      ************************************************/
-    if(millis() - windowStartTime > WindowSize)
+    if(millis() - windowStartTime > (WindowSize * 1000))
     { //time to shift the Relay Window
-      windowStartTime += WindowSize;
+      windowStartTime += (WindowSize * 1000);
       
       if(wemoProcessStarted && (wemoProcess.running() || wemoProcess.available())) {
-        Serial.println("WEMO ERROR. STILL RUNNING AFTER WINDOW");
-//        wemoProcess.close();
+        Serial.println(F("WEMO ERROR. STILL RUNNING AFTER WINDOW"));
+        wemoProcess.close();
       }
       
-      if (Output > (WindowSize - 1000)) {
-        Serial.println("PID LIBRARY ERROR"); // sanity check
+      if (Output > ((WindowSize * 1000) - 1000)) {
+        Serial.println(F("PID LIBRARY ERROR")); // sanity check
       }
       
       if (Output > 50) {
               
-        Serial.print("ON OFF Output (MS) - ");
+        Serial.print(F("ON OFF Output (MS) - "));
         Serial.println(Output);
-        Serial.print("Input - ");
+        Serial.print(F("Input - "));
         Serial.println(Input);    
       
         wemoProcess.begin("php-cli");
