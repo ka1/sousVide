@@ -17,18 +17,17 @@ unsigned long lastTime;
 bool is_ready = false;
 
 //define the size of the median buffer
-#define RAWDATASIZE 100
+#define RAWDATASIZE 50
 #define RAWDATAMEDIANIDX RAWDATASIZE / 2
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
-byte number = 0; //counter, how many times data is read between the median call
+//byte number = 0; //counter, how many times data is read between the median call
 
 //wemo settings
 String wemo_ip;
 int wemo_temp_start; //*10
 int wemo_temp_end; //*10
 bool wemo_on; // current wemo state
-unsigned long lastWeMoOnMillis; // last millis wemo was turned on
 Process wemoProcess;
 bool wemoProcessStarted = false;
 
@@ -78,7 +77,6 @@ void setup() {
   }
 
   lastTime = millis();
-  lastWeMoOnMillis = millis();
   
   //PID
   windowStartTime = millis();
@@ -91,6 +89,18 @@ void setup() {
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
   
+}
+
+int getIntValue(String data, char separator, int index){
+  String temp = getValue(data,separator,index);
+  return temp.toInt();
+}
+
+char *getCharValue(String data, char separator, int index, int bufferSize){
+  char charBuf[bufferSize];
+  String temp = getValue(data,separator,index);
+  temp.toCharArray(charBuf,bufferSize);
+  return charBuf;
 }
 
 String getValue(String data, char separator, int index)
@@ -106,7 +116,6 @@ String getValue(String data, char separator, int index)
       strIndex[1] = (i == maxIndex) ? i + 1 : i;
     }
   }
-
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
@@ -131,28 +140,18 @@ void refreshConfiguration() {
   str = str.substring(0, (str.length() - 1));
 
   // read temperature settings
-  String reference_voltage_str = getValue(str, '|', 2);
-  reference_voltage = reference_voltage_str.toInt();
-
-  String temp_range_min_str = getValue(str, '|', 0);
-  temp_range_min = temp_range_min_str.toInt();
-  String temp_range_max_str = getValue(str, '|', 1);
-  temp_range_max = temp_range_max_str.toInt();
-
+  reference_voltage = getIntValue(str, '|', 2);
+  //read temp values
+  temp_range_min = getIntValue(str, '|', 0);
+  temp_range_max = getIntValue(str, '|', 1);
   //read WeMo values
   wemo_ip = getValue(str, '|', 5);
-  String wemo_temp_start_str = getValue(str, '|', 6);
-  wemo_temp_start = wemo_temp_start_str.toInt();
-  String wemo_temp_end_str = getValue(str, '|', 7);
-  wemo_temp_end = wemo_temp_end_str.toInt();
-
+  wemo_temp_start = getIntValue(str, '|', 6);
+  wemo_temp_end = getIntValue(str, '|', 7);
   //read PID values
-  String pid_kp_str = getValue(str, '|', 8);
-  String pid_ki_str = getValue(str, '|', 9);
-  String pid_kd_str = getValue(str, '|', 10);
-  pid_kp = pid_kp_str.toInt();
-  pid_ki = pid_ki_str.toInt();
-  pid_kd = pid_kd_str.toInt();
+  pid_kp = getIntValue(str, '|', 8);
+  pid_ki = getIntValue(str, '|', 9);
+  pid_kd = getIntValue(str, '|', 10);
 
   Serial.println(F("refreshed"));
   Serial.println(wemo_temp_end);
@@ -196,7 +195,7 @@ void loop() {
   rawData[rawDataIdx] = currentTemperature();
   rawDataIdx++;
   rawDataIdx %= RAWDATASIZE;
-  number++;
+//  number++;
 
 //  Process p;
 
@@ -263,7 +262,7 @@ void loop() {
     digitalWrite(13, LOW);
 
 
-    number = 0;
+//    number = 0;
   }
 
   if (is_ready) {
@@ -288,26 +287,24 @@ void loop() {
       }
       
       if (Output > 50) {
-              
-        Serial.print(F("ON OFF Output (MS) - "));
-        Serial.println(Output);
-        Serial.print(F("Input - "));
-        Serial.println(Input);    
+//        Serial.print(F("ON OFF Output (MS) - "));
+//        Serial.println(Output);
+//        Serial.print(F("Input - "));
+//        Serial.println(Input);    
       
         wemoProcess.begin("php-cli");
-        String phpCall = "/mnt/sda1/wemo/wemo_switch_onOffTimed.php";
-        wemoProcess.addParameter(phpCall);
+        wemoProcess.addParameter(F("/mnt/sda1/wemo/wemo_switch_onOffTimed.php"));
         wemoProcess.addParameter(wemo_ip);
-        String strOutput = String(Output);
-        wemoProcess.addParameter(strOutput);
+        wemoProcess.addParameter((String) Output);
         wemoProcess.runAsynchronously();
         wemoProcessStarted = true;
       }
     }
   }
-
-  delay(6); // Poll every 50ms
+  delay(6); // Poll every x ms
 }
+
+
 
 int median(int array[]) {
 
