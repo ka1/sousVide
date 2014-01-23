@@ -54,12 +54,29 @@ int temp_range_min; //*10
 int temp_range_max; //*10
 int reference_voltage; //*1000
 
+/* This function places the current value of the heap and stack pointers in the
+ * variables. You can call it from any place in your code and save the data for
+ * outputting or displaying later. This allows you to check at different parts of
+ * your program flow.
+ * The stack pointer starts at the top of RAM and grows downwards. The heap pointer
+ * starts just above the static variables etc. and grows upwards. SP should always
+ * be larger than HP or you'll be in big trouble! The smaller the gap, the more
+ * careful you need to be. Julian Gall 6-Feb-2009.
+ */
 uint8_t * heapptr, * stackptr;
 void check_mem() {
   stackptr = (uint8_t *)malloc(4);          // use stackptr temporarily
   heapptr = stackptr;                     // save value of heap pointer
   free(stackptr);      // free up the memory again (sets stackptr to 0)
   stackptr =  (uint8_t *)(SP);           // save value of stack pointer
+}
+
+void printMem(){
+  check_mem();
+  Serial.print(F("H:"));
+  Serial.println(*heapptr);
+  Serial.print(F("S(L):"));
+  Serial.println(*stackptr);
 }
 
 void setup() {
@@ -78,7 +95,7 @@ void setup() {
   server.begin();
 
   refreshConfiguration();
-  setWeMo(false);
+//  setWeMo(false);
 
   for (int i = 0; i < RAWDATASIZE; i++) {
     rawData[i] = 0;
@@ -127,22 +144,62 @@ String getValue(String data, char separator, int index)
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
+void checkIfProcessRunning(){
+  Serial.println(F("checkRunning"));
+  printMem();
+  if(wemoProcessStarted && (wemoProcess.running() || wemoProcess.available())) {
+    int i = 0;
+    while(wemoProcess.available() > 0){
+      i++;
+      char c = wemoProcess.read();
+      Serial.print(c);
+      if (i > 100) {
+        i = 0;
+        break;
+      }
+    }
+    while(wemoProcess.running()){
+      Serial.println(F("RUNNING"));
+      delay(500);
+      if (i > 100) {
+        i = 0;
+        break;
+      }
+    }
+    Serial.println(F("WEMOERROR.STILLRUNNING."));
+    Serial.print(F("HEAP:"));
+    Serial.println(*heapptr);
+    Serial.print(F("STACK (LARGER):"));
+    Serial.println(*stackptr);
+    wemoProcess.close();
+    wemoProcess.flush();
+  }
+  
+}
+
 void refreshConfiguration() {
-  Process p;
+  Serial.println(F("STARTING REFRESH"));
+  checkIfProcessRunning();
+
 
   String configQuery = "SELECT set_min * 10,set_max * 10, referenceVoltage * 1000, alarm_min * 10, alarm_max * 10, wemo_ip, wemo_temp_min * 10, wemo_temp_max * 10, pid_kp * 100, pid_ki * 100, pid_kd * 100 FROM `thermosetup`;";
 
-  p.begin("sqlite3");
-  p.addParameter("/mnt/sda1/temperatures.sqlite");
-  p.addParameter(configQuery);
-  p.run();
+  Process wemoProcess;
+
+  wemoProcess.begin("sqlite3");
+  wemoProcess.addParameter("/mnt/sda1/temperatures.sqlite");
+  wemoProcess.addParameter(configQuery);
+  wemoProcess.run();
 
   //check output
   String str = "";
-  while (p.available() > 0) {
-    char c = p.read();
+  while (wemoProcess.available() > 0) {
+    char c = wemoProcess.read();
     str += c;
+    Serial.print(c);
   }
+  
+  Serial.println(F("READ"));
 
   //trim last linebreak ("0.0|100.0|1.134|||192.168.4.39|45.0|50.0")
   str = str.substring(0, (str.length() - 1));
@@ -161,20 +218,20 @@ void refreshConfiguration() {
   pid_ki = getIntValue(str, '|', 9);
   pid_kd = getIntValue(str, '|', 10);
 
-  Serial.println(F("refreshed"));
-  Serial.println(wemo_temp_end);
-  Serial.println(wemo_temp_start);
+  Serial.println(F("REFR"));
+//  Serial.println(wemo_temp_end);
+//  Serial.println(wemo_temp_start);
   Serial.println(wemo_ip);
-  Serial.println(reference_voltage);
-  Serial.println(temp_range_min);
-  Serial.println(temp_range_max);
-  Serial.println(pid_kp);
-  Serial.println(pid_ki);
-  Serial.println(pid_kd);
+//  Serial.println(reference_voltage);
+//  Serial.println(temp_range_min);
+//  Serial.println(temp_range_max);
+//  Serial.println(pid_kp);
+//  Serial.println(pid_ki);
+//  Serial.println(pid_kd);
 
   Setpoint = (float)wemo_temp_end / 10.0;
   myPID.SetTunings((float) pid_kp / 100.0,(float) pid_ki / 100.0,(float) pid_kd / 100.0);
-  setWeMo(false);
+//  setWeMo(false);
 }
 
 float calculateTemperature(int rawTemp) {
@@ -211,70 +268,70 @@ void loop() {
   if (!is_ready) {
     //check every 5 seconds if ready
     if (millis() - lastTime > 5000) {
-      Process p;
+      Serial.println(F("before"));
+      printMem();
+//      Process p;
       String answer = "";
       //See if there is no entry yet, or if the last entry is younger than the current time. if the current time is younger than the last entry, we can not have the write time yet.
       String timecheckQuery = "SELECT (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures') IS NULL";
       timecheckQuery += " OR (SELECT STRFTIME('%s','NOW') > (SELECT timestamp FROM temperatures WHERE temp_ID = (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures')));";
 
-      p.begin("sqlite3");
-      p.addParameter("/mnt/sda1/temperatures.sqlite");
-      p.addParameter(timecheckQuery);
-      p.run();
+      wemoProcess.begin("sqlite3");
+      wemoProcess.addParameter("/mnt/sda1/temperatures.sqlite");
+      wemoProcess.addParameter(timecheckQuery);
+      wemoProcess.run();
 
-      Serial.println(timecheckQuery);
+//      Serial.println(timecheckQuery);
 
       //check output
-      while (p.available() > 0) {
-        char c = p.read();
+      while (wemoProcess.available() > 0) {
+        char c = wemoProcess.read();
         answer += c;
       }
 
-      Serial.println(answer);
+//      Serial.println(answer);
 
       if (answer == "1\n") {
         is_ready = true;
       }
       
       Serial.println(F("not ready"));
-      check_mem();
-      Serial.println(heapptr);
-      Serial.println(stackptr);
+      printMem();
 
       lastTime = millis();
     }
   }
-  //run every second, after ready
-  else if (is_ready && millis() - lastTime > 1000) {
-    //LED ON
-    digitalWrite(13, HIGH);
-
-    String sql = "INSERT INTO temperatures (temperature) VALUES (";
-    sql += median(rawData); //calculate median from last N read values
-    sql += ");";
-
-    Serial.println(sql);
-    
-    Process p;
-    p.begin("sqlite3");
-
-    // the database file name
-    // requires a microSD card with accessible filesystem
-    p.addParameter("/mnt/sda1/temperatures.sqlite");
-
-    // the query to run
-    p.addParameter(sql);
-    p.run();
-
-    //safe last time and switch of LED
-    lastTime = millis();
-
-    //LED OFF
-    digitalWrite(13, LOW);
-
-
-//    number = 0;
-  }
+//  //run every second, after ready
+//  else if (is_ready && millis() - lastTime > 1000) {
+//    //LED ON
+//    digitalWrite(13, HIGH);
+//
+//    String sql = "INSERT INTO temperatures (temperature) VALUES (";
+//    sql += median(rawData); //calculate median from last N read values
+//    sql += ");";
+//
+////    Serial.println(sql);
+//    
+//    Process p;
+//    p.begin("sqlite3");
+//
+//    // the database file name
+//    // requires a microSD card with accessible filesystem
+//    p.addParameter("/mnt/sda1/temperatures.sqlite");
+//
+//    // the query to run
+//    p.addParameter(sql);
+//    p.run();
+//
+//    //safe last time and switch of LED
+//    lastTime = millis();
+//
+//    //LED OFF
+//    digitalWrite(13, LOW);
+//
+//
+////    number = 0;
+//  }
 
   if (is_ready) {
     //PID
@@ -288,13 +345,24 @@ void loop() {
     { //time to shift the Relay Window
       windowStartTime += (WindowSize * 1000);
       
-      if(wemoProcessStarted && (wemoProcess.running() || wemoProcess.available())) {
-        Serial.println(F("WEMO ERROR. STILL RUNNING AFTER WINDOW"));
-        wemoProcess.close();
-      }
+      checkIfProcessRunning();
+      
+      //write temperature to db
+      digitalWrite(13, HIGH);
+      String sql = "INSERT INTO temperatures (temperature) VALUES (";
+      sql += median(rawData); //calculate median from last N read values
+      sql += ");";
+      wemoProcess.begin("sqlite3");
+      wemoProcess.addParameter("/mnt/sda1/temperatures.sqlite");
+      wemoProcess.addParameter(sql);
+      wemoProcess.run();
+      digitalWrite(13, LOW);
+
+      
+      
       
       if (Output > ((WindowSize * 1000) - 1000)) {
-        Serial.println(F("PID LIBRARY ERROR")); // sanity check
+        Serial.println(F("PID LIB ERR")); // sanity check
       }
       
       if (Output > 50) {
@@ -337,25 +405,25 @@ int median(int array[]) {
   return sortedData[RAWDATAMEDIANIDX];
 }
 
-void setWeMo(bool on) {
-
-  if (on != wemo_on) {
-    wemo_on = on;
-    Process p;
-    p.begin("php-cli");
-    String phpCall = "/mnt/sda1/wemo/wemo_switch_";
-    if (on) {
-      phpCall += "on";
-    } else {
-      phpCall += "off";
-    }
-    phpCall += ".php";
-    p.addParameter(phpCall);
-    p.addParameter(wemo_ip);
-    p.run();
-
-  }
-}
+//void setWeMo(bool on) {
+//
+//  if (on != wemo_on) {
+//    wemo_on = on;
+//    Process p;
+//    p.begin("php-cli");
+//    String phpCall = "/mnt/sda1/wemo/wemo_switch_";
+//    if (on) {
+//      phpCall += "on";
+//    } else {
+//      phpCall += "off";
+//    }
+//    phpCall += ".php";
+//    p.addParameter(phpCall);
+//    p.addParameter(wemo_ip);
+//    p.run();
+//
+//  }
+//}
 
 int indexOfMax(int array[]) {
   int maxi = -1;
