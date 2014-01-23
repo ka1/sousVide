@@ -54,15 +54,6 @@ int temp_range_min; //*10
 int temp_range_max; //*10
 int reference_voltage; //*1000
 
-/* This function places the current value of the heap and stack pointers in the
- * variables. You can call it from any place in your code and save the data for
- * outputting or displaying later. This allows you to check at different parts of
- * your program flow.
- * The stack pointer starts at the top of RAM and grows downwards. The heap pointer
- * starts just above the static variables etc. and grows upwards. SP should always
- * be larger than HP or you'll be in big trouble! The smaller the gap, the more
- * careful you need to be. Julian Gall 6-Feb-2009.
- */
 uint8_t * heapptr, * stackptr;
 void check_mem() {
   stackptr = (uint8_t *)malloc(4);          // use stackptr temporarily
@@ -247,8 +238,8 @@ void loop() {
       
       Serial.println(F("not ready"));
       check_mem();
-      Serial.println(*heapptr);
-      Serial.println(*stackptr);
+      Serial.println(heapptr);
+      Serial.println(stackptr);
 
       lastTime = millis();
     }
@@ -258,36 +249,22 @@ void loop() {
     //LED ON
     digitalWrite(13, HIGH);
 
-    String cmd;
-    cmd += "sqlite3 /mnt/sda1/temperatures.sqlite '";
-    cmd = "INSERT INTO temperatures (temperature) VALUES (";
-    cmd += median(rawData); //calculate median from last N read values
-    cmd += ");";
-    cmd += "'; echo $?";
+    String sql = "INSERT INTO temperatures (temperature) VALUES (";
+    sql += median(rawData); //calculate median from last N read values
+    sql += ");";
 
-//    Serial.println(sql);
+    Serial.println(sql);
     
     Process p;
-//    p.begin("sqlite3");
+    p.begin("sqlite3");
 
     // the database file name
     // requires a microSD card with accessible filesystem
-//    p.addParameter("/mnt/sda1/temperatures.sqlite");
+    p.addParameter("/mnt/sda1/temperatures.sqlite");
 
     // the query to run
-//    p.addParameter(sql);
-    p.runShellCommand(cmd);
-    
-    while (p.available()>0) {
-      char c = p.read();
-      if (c > 0){
-        Serial.println(F("There was an error writing to DB"));
-        break;
-      }
-      Serial.print(c);
-    }
-    
-    Serial.println(F("done db"));
+    p.addParameter(sql);
+    p.run();
 
     //safe last time and switch of LED
     lastTime = millis();
