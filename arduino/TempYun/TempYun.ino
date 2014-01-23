@@ -154,12 +154,12 @@ void refreshConfiguration() {
   pid_kd = getIntValue(str, '|', 10);
 
   Serial.println(F("refreshed"));
-  Serial.println(wemo_temp_end);
+//  Serial.println(wemo_temp_end);
   Serial.println(wemo_temp_start);
   Serial.println(wemo_ip);
-  Serial.println(reference_voltage);
-  Serial.println(temp_range_min);
-  Serial.println(temp_range_max);
+//  Serial.println(reference_voltage);
+//  Serial.println(temp_range_min);
+//  Serial.println(temp_range_max);
   Serial.println(pid_kp);
   Serial.println(pid_ki);
   Serial.println(pid_kd);
@@ -242,18 +242,32 @@ void loop() {
     sql += median(rawData); //calculate median from last N read values
     sql += ");";
 
-    Serial.println(sql);
+//    Serial.println(sql);
     
     Process p;
-    p.begin("sqlite3");
+    String cmd = "sqlite3 /mnt/sda1/temperatures.sqlite '";
+    String paramStringEnd = "'; echo $?";
+//    p.begin("sqlite3");
 
     // the database file name
     // requires a microSD card with accessible filesystem
-    p.addParameter("/mnt/sda1/temperatures.sqlite");
+//    p.addParameter("/mnt/sda1/temperatures.sqlite");
 
     // the query to run
-    p.addParameter(sql);
-    p.run();
+//    p.addParameter(sql);
+    p.runShellCommand(cmd + sql + paramStringEnd);
+    
+    while (p.available()>0) {
+      char c = p.read();
+      if (c > 0){
+        Serial.println(F("There was an error writing to DB"));
+        break;
+      }
+      Serial.print(c);
+    }
+    
+    Serial.println(F("done db"));
+    
 
     //safe last time and switch of LED
     lastTime = millis();
