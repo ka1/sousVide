@@ -271,22 +271,29 @@ void loop() {
       Serial.println(F("before"));
       printMem();
 //      Process p;
-      String answer = "";
+      
       //See if there is no entry yet, or if the last entry is younger than the current time. if the current time is younger than the last entry, we can not have the write time yet.
-      String timecheckQuery = "SELECT (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures') IS NULL";
-      timecheckQuery += " OR (SELECT STRFTIME('%s','NOW') > (SELECT timestamp FROM temperatures WHERE temp_ID = (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures')));";
+//      String timecheckQuery = "SELECT (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures') IS NULL";
+//      timecheckQuery += " OR (SELECT STRFTIME('%s','NOW') > (SELECT timestamp FROM temperatures WHERE temp_ID = (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures')));";
 
-      wemoProcess.begin("sqlite3");
-      wemoProcess.addParameter("/mnt/sda1/temperatures.sqlite");
-      wemoProcess.addParameter(timecheckQuery);
+      wemoProcess.begin(F("sqlite3"));
+      wemoProcess.addParameter(F("/mnt/sda1/temperatures.sqlite"));
+//      wemoProcess.addParameter(F("SELECT '1'"));
+      wemoProcess.addParameter(F("SELECT (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures') IS NULL OR (SELECT STRFTIME('%s','NOW') > (SELECT timestamp FROM temperatures WHERE temp_ID = (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures')));"));
       wemoProcess.run();
 
 //      Serial.println(timecheckQuery);
 
       //check output
+      int maxI = 0;
+      String answer = "";
       while (wemoProcess.available() > 0) {
         char c = wemoProcess.read();
         answer += c;
+        if (maxI > 20){
+          Serial.println("ABORT");
+          break;
+        }
       }
 
 //      Serial.println(answer);
@@ -294,6 +301,7 @@ void loop() {
       if (answer == "1\n") {
         is_ready = true;
       }
+
       
       Serial.println(F("not ready"));
       printMem();
