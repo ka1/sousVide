@@ -119,7 +119,7 @@ void loop() {
     //check every 5 seconds if ready
     if (millis() - lastTime > 5000) {
       Serial.println(F("before"));
-      printMem();
+//      printMem();
       
       wemoProcess.begin(F("sqlite3"));
       wemoProcess.addParameter(F("/mnt/sda1/temperatures.sqlite"));
@@ -146,41 +146,24 @@ void loop() {
 
       
       Serial.println(F("not ready"));
-      printMem();
+//      printMem();
 
       lastTime = millis();
     }
   }
-//  //run every second, after ready
-//  else if (is_ready && millis() - lastTime > 1000) {
-//    //LED ON
-//    digitalWrite(13, HIGH);
-//
-//    String sql = "INSERT INTO temperatures (temperature) VALUES (";
-//    sql += median(rawData); //calculate median from last N read values
-//    sql += ");";
-//
-////    Serial.println(sql);
-//    
-//    Process p;
-//    p.begin("sqlite3");
-//
-//    // the database file name
-//    // requires a microSD card with accessible filesystem
-//    p.addParameter("/mnt/sda1/temperatures.sqlite");
-//
-//    // the query to run
-//    p.addParameter(sql);
-//    p.run();
-//
-//    //safe last time and switch of LED
-//    lastTime = millis();
-//
-//    //LED OFF
-//    digitalWrite(13, LOW);
-//
-//
-//  }
+  //run every second, after ready
+  else if (is_ready && millis() - lastTime > 1000) {
+    digitalWrite(13, HIGH); //LED ON
+    String sqlValue = (String) median(rawData); //calculate median from last N read values
+    Process p;
+    p.begin("sqlite3");
+    p.addParameter(F("/mnt/sda1/temperatures.sqlite"));
+    p.addParameter("INSERT INTO temperatures (temperature) VALUES (" + sqlValue + ")");
+    p.run();
+    digitalWrite(13, LOW); //LED OFF
+
+    lastTime = millis();
+  }
 
   if (is_ready) {
     //PID
@@ -192,28 +175,28 @@ void loop() {
     { //time to shift the Relay Window
       windowStartTime += (WindowSize * 1000);
       
-      //see if process is still running and handle any response
-      checkIfProcessRunning();
-      
-      //write temperature to db
-      //TODO: do this every second, again
-      digitalWrite(13, HIGH);
-      String sqlValue = (String) median(rawData); //calculate median from last N read values
-      wemoProcess.begin(F("sqlite3"));
-      wemoProcess.addParameter(F("/mnt/sda1/temperatures.sqlite"));
-      wemoProcess.addParameter("INSERT INTO temperatures (temperature) VALUES (" + sqlValue + ");");
-      wemoProcess.run();
-      digitalWrite(13, LOW);
+//      //write temperature to db
+//      //TODO: do this every second, again
+//      digitalWrite(13, HIGH);
+//      String sqlValue = (String) median(rawData); //calculate median from last N read values
+//      wemoProcess.begin(F("sqlite3"));
+//      wemoProcess.addParameter(F("/mnt/sda1/temperatures.sqlite"));
+//      wemoProcess.addParameter("INSERT INTO temperatures (temperature) VALUES (" + sqlValue + ");");
+//      wemoProcess.run();
+//      digitalWrite(13, LOW);
       
       if (Output > ((WindowSize * 1000) - 1000)) {
         Serial.println(F("PID LIB ERR")); // sanity check
       }
       
       if (Output > 50) {
-//        Serial.print(F("ON OFF Output (MS) - "));
-//        Serial.println(Output);
-//        Serial.print(F("Input - "));
-//        Serial.println(Input);    
+        //see if process is still running and handle any response
+        checkIfProcessRunning();
+        
+        Serial.print(F("ON OFF Output (MS) - "));
+        Serial.print(Output);
+        Serial.print(F(", Input - "));
+        Serial.println(Input);    
       
         wemoProcess.begin(F("php-cli"));
         wemoProcess.addParameter(F("/mnt/sda1/wemo/wemoTimed.php"));

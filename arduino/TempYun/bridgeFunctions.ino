@@ -1,21 +1,21 @@
 void refreshConfiguration() {
   Serial.println(F("STARTING REFRESH"));
-  checkIfProcessRunning();
+//  checkIfProcessRunning();
 
 
   String configQuery = "SELECT set_min * 10,set_max * 10, referenceVoltage * 1000, alarm_min * 10, alarm_max * 10, wemo_ip, wemo_temp_min * 10, wemo_temp_max * 10, pid_kp * 100, pid_ki * 100, pid_kd * 100 FROM `thermosetup`;";
 
-  Process wemoProcess;
+  Process p;
 
-  wemoProcess.begin("sqlite3");
-  wemoProcess.addParameter("/mnt/sda1/temperatures.sqlite");
-  wemoProcess.addParameter(configQuery);
-  wemoProcess.run();
+  p.begin(F("sqlite3"));
+  p.addParameter(F("/mnt/sda1/temperatures.sqlite"));
+  p.addParameter(configQuery);
+  p.run();
 
   //check output
   String str = "";
-  while (wemoProcess.available() > 0) {
-    char c = wemoProcess.read();
+  while (p.available() > 0) {
+    char c = p.read();
     str += c;
     Serial.print(c);
   }
