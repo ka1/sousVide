@@ -3,6 +3,11 @@ int getIntValue(String data, char separator, int index){
   return temp.toInt();
 }
 
+long getLongValue(String data, char separator, int index){
+  String temp = getValue(data,separator,index);
+  return temp.toInt();
+}
+
 char *getCharValue(String data, char separator, int index, int bufferSize){
   char charBuf[bufferSize];
   String temp = getValue(data,separator,index);
@@ -78,15 +83,15 @@ void check_mem() {
 void printMem(){
   check_mem();
   Serial.print(F("H:"));
-  Serial.println(*heapptr);
-  Serial.print(F("S(L):"));
+  Serial.print(*heapptr);
+  Serial.print(F(", S(L):"));
   Serial.println(*stackptr);
 }
 
 float calculateTemperature(int rawTemp) {
   float temp = ((float)rawTemp / 1023.0) * ((float) reference_voltage / 1000.0);
   temp = ((float) temp_range_min / 10.0) + (temp * (((float)temp_range_max / 10.0) - ((float)temp_range_min / 10.0)));
-  return temp;
+  return round(temp*10.0) / 10.0;
 }
 
 int median(int array[]) {

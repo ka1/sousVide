@@ -34,19 +34,10 @@ bool wemoProcessStarted = false;
 double Setpoint, Input, Output;
 byte WindowSize = 10; //in seconds = *1000
 unsigned long windowStartTime;
-//unsigned long lastPIDCall;
-int pid_kp; //*100
+unsigned long pid_kp; //*100
 int pid_ki; //*100
 int pid_kd; //*100
-//byte ATuneModeRemember=2;
-//double aTuneStep=500;
-//double aTuneNoise=1;
-//unsigned int aTuneLookBack=20;
-//boolean tuning = false;
-
-//Specify the links and initial tuning parameters
-PID myPID(&Input, &Output, &Setpoint,850,0.5,0.1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
-//PID_ATune aTune(&Input, &Output);
+PID myPID(&Input, &Output, &Setpoint, 850, 0.5, 0.1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
 
 // temperature settings
 int temp_range_min; //*10
@@ -80,7 +71,7 @@ void setup() {
 
   //init time counter
   lastTime = millis();
-  
+
   //PID
   windowStartTime = millis();
   //initialize the variables we're linked to
@@ -118,12 +109,8 @@ void loop() {
   if (!is_ready) {
     //check every 5 seconds if ready
     if (millis() - lastTime > 5000) {
-      Serial.println(F("before"));
-//      printMem();
-      
-      wemoProcess.begin(F("sqlite3"));
-      wemoProcess.addParameter(F("/mnt/sda1/temperatures.sqlite"));
-      wemoProcess.addParameter(F("SELECT (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures') IS NULL OR (SELECT STRFTIME('%s','NOW') > (SELECT timestamp FROM temperatures WHERE temp_ID = (SELECT SEQ FROM SQLITE_SEQUENCE WHERE NAME='temperatures')));"));
+      wemoProcess.begin(F("php-cli"));
+      wemoProcess.addParameter(F("/mnt/sda1/clientPhp/checkTime.php"));
       wemoProcess.run();
 
       //check output
@@ -132,21 +119,19 @@ void loop() {
       while (wemoProcess.available() > 0) {
         char c = wemoProcess.read();
         answer += c;
-        if (maxI > 20){
-          Serial.println("ABORT");
+        if (maxI > 20) {
+          Serial.println(F("ABORT"));
           break;
         }
       }
 
-//      Serial.println(answer);
+      //Serial.println(answer);
 
-      if (answer == "1\n") {
+      if (answer == "1") {
         is_ready = true;
+      } else {
+        Serial.println(F("not ready"));
       }
-
-      
-      Serial.println(F("not ready"));
-//      printMem();
 
       lastTime = millis();
     }
@@ -156,7 +141,7 @@ void loop() {
     digitalWrite(13, HIGH); //LED ON
     String sqlValue = (String) median(rawData); //calculate median from last N read values
     Process p;
-    p.begin("sqlite3");
+    p.begin(F("sqlite3"));
     p.addParameter(F("/mnt/sda1/temperatures.sqlite"));
     p.addParameter("INSERT INTO temperatures (temperature) VALUES (" + sqlValue + ")");
     p.run();
@@ -169,35 +154,31 @@ void loop() {
     //PID
     Input = calculateTemperature(median(rawData));
     myPID.Compute();
-    
+
     //see if the window has passed
-    if(millis() - windowStartTime > (WindowSize * 1000))
+    if (millis() - windowStartTime > (WindowSize * 1000))
     { //time to shift the Relay Window
       windowStartTime += (WindowSize * 1000);
-      
-//      //write temperature to db
-//      //TODO: do this every second, again
-//      digitalWrite(13, HIGH);
-//      String sqlValue = (String) median(rawData); //calculate median from last N read values
-//      wemoProcess.begin(F("sqlite3"));
-//      wemoProcess.addParameter(F("/mnt/sda1/temperatures.sqlite"));
-//      wemoProcess.addParameter("INSERT INTO temperatures (temperature) VALUES (" + sqlValue + ");");
-//      wemoProcess.run();
-//      digitalWrite(13, LOW);
-      
+
+      //if the time is STILL more than one windowsSize ahead, send error and reset window
+      if (millis() - windowStartTime > (WindowSize * 1000)) {
+        Serial.println(F("---RESET---"));
+        windowStartTime = millis();
+      }
+
       if (Output > ((WindowSize * 1000) - 1000)) {
         Serial.println(F("PID LIB ERR")); // sanity check
       }
-      
+
       if (Output > 50) {
         //see if process is still running and handle any response
         checkIfProcessRunning();
-        
+
         Serial.print(F("ON OFF Output (MS) - "));
         Serial.print(Output);
         Serial.print(F(", Input - "));
-        Serial.println(Input);    
-      
+        Serial.println(Input);
+
         wemoProcess.begin(F("php-cli"));
         wemoProcess.addParameter(F("/mnt/sda1/wemo/wemoTimed.php"));
         wemoProcess.addParameter(wemo_ip);

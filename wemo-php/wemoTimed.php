@@ -1,4 +1,6 @@
 <?php
+$localTest = false;
+
 if ($localTest){
 	include('./models/Device.php');
 	include('./models/Outlet.php');
