@@ -94,7 +94,7 @@ class McuProtocol(LineReceiver):
 		dbContentsTsv = "Ident\tZeitpunkt\tTemperatur\n"
 		for row in dbContents:
 			dbContentsTsv += str("{0}\t{1}\t{2}\n".format(row[2], row[1], row[0]))
-		self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#entireDB", dbContentsTsv)
+		return dbContentsTsv
 	
 	@exportRpc("getSettings")
 	def readTemperatureSettings(self):
@@ -106,7 +106,24 @@ class McuProtocol(LineReceiver):
 		thermosetupTsv = "RangeMin\tRangeMax\tRefVolt\n"
 		for row in thermosetup:
 			thermosetupTsv += str("{0}\t{1}\t{2}\n".format(row[0], row[1], row[2]))
-		self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#thermoSettings", thermosetupTsv)
+		return thermosetupTsv
+
+	##Updates the settings in the database and resets the database
+	@exportRpc("newThermoSettings")
+	def writeThermoSettings(self, newRefVolt, newTempEnd, newTempStart):
+		newTempEnd = float(newTempEnd)
+		newTempStart = float(newTempStart)
+		newRefVolt = float(newRefVolt)
+		if (newTempEnd > 1372 or newTempEnd < -100):
+			raise Exception("Temperature range end over limit of 1372 or below -100")
+		if (newTempStart > 1372 or newTempStart < -100):
+			raise Exception("Temperature range start over limit of 1372 or below -100")
+		thermoSettings = (newTempStart, newTempEnd, newRefVolt)
+		sq3cur = sq3con.cursor()
+		sq3cur.execute("UPDATE thermosetup SET set_min = ?, set_max = ?, referenceVoltage = ?", thermoSettings)
+		sq3cur.execute("DELETE FROM temperatures")
+		sq3cur.execute("DELETE FROM SQLITE_SEQUENCE WHERE name = 'temperatures'")
+		return True
 
 	def connectionMade(self):
 		log.msg('Serial port connected.')
@@ -122,7 +139,7 @@ class McuProtocol(LineReceiver):
 
 			## construct PubSub event from raw data
 			##
-			evt = {'id': data[0], 'value': data[1]}
+			evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'Temperatur': data[1]}
 
 			## publish event to all clients subscribed to topic
 			##

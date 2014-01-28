@@ -1,50 +1,92 @@
+// ----------------------------------------------------------------------------
+// -------------------------- Autobahn and WAMP part --------------------------
+// ----------------------------------------------------------------------------
+
 var sess = null;
 var wsuri = "ws://" + window.location.hostname + ":9000";
 var thermoRefVoltage, thermoRangeMax, thermoRangeMin;
 
-function onAnalogValue(topicUri, event) {
-	console.log(event);
+//function receives WS new data event and draws the single datum
+function newRawDataReceived(topicUri, singleDatum) {
+	singleDatum.Zeitpunkt = parseDate(singleDatum.Zeitpunkt);
+	singleDatum.Temperatur = +calculateTemperature(singleDatum.Temperatur);
+	
+	//add new data to array
+	graphData.push(singleDatum);
+	
+	//rescale
+	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
+	x2.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
+	y2.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
+	y.domain(y2.domain()); //set main window y scale to brush window scale
+	
+	//so vielleicht?
+	if (runningBrush){
+		var brushLeft = d3.time.minute.offset(singleDatum.Zeitpunkt, -10);
+		var brushRight = d3.time.minute.offset(singleDatum.Zeitpunkt, 0);
+		brush.extent([brushLeft,brushRight]);
+		graphBrush.select(".brush").call(brush);
+		x.domain(brush.extent()); //change window of main graph
+	}
+	
+	//draw new graphs
+	graphMain.select("path").attr("d", line);
+	graphMain.select(".x.axis").call(xAxis);
+	graphBrush.select("path").attr("d", line2);
+	graphBrush.select(".x.axis").call(xAxis2);
+	
+	currentTemperatureText.text(singleDatum.Temperatur + "°C");
+	return;
 }
 
 function controlLed(status) {
 	sess.call("rpc:control-led", status).always(ab.log);
 }
 
-//this function is called once in the beginning
-function askForAllValues(){
-	sess.call("rpc:getEntireDB", 500).always(ab.log);
-}
-
 //this function askes for the settings and is called once in the beginning
 function askForSettings(){
-	sess.call("rpc:getSettings").always(ab.log);
-}
-
-function calculateTemperature(rawTemp){
-	var temp = rawTemp / 1023.0 * thermoRefVoltage;
-	temp = thermoRangeMin + (temp * (thermoRangeMax - thermoRangeMin));
-	return temp.toFixed(1);
-}
-
-//this function is called once in the beginning, after all data has been requested
-function receiveAllValues(topicUri, event){
-	data = d3.tsv.parse(event);
-	data.forEach(function(d) {
-		d.Zeitpunkt = parseDate(d.Zeitpunkt);
-		d.Temperatur = +(calculateTemperature(d.Temperatur));
+	//sess.call("rpc:getSettings").always(ab.log);
+	sess.call("rpc:getSettings").then(function (result) {
+		//receive and parse settings
+		var settings = d3.tsv.parse(result);
+		thermoRefVoltage = parseFloat(settings[0].RefVolt);
+		thermoRangeMax = parseFloat(settings[0].RangeMax);
+		thermoRangeMin = parseFloat(settings[0].RangeMin);
+		
+		document.getElementById('refVolt').value = thermoRefVoltage;
+		document.getElementById('tempRangeEnd').value = thermoRangeMax;
+		document.getElementById('tempRangeStart').value = thermoRangeMin;
+		
+		//ask for all values
+		sess.call("rpc:getEntireDB", 500).then(function (resultValues) {
+			data = d3.tsv.parse(resultValues);
+			data.forEach(function(d) {
+				d.Zeitpunkt = parseDate(d.Zeitpunkt);
+				d.Temperatur = +(calculateTemperature(d.Temperatur));
+			});
+			
+			//store data in globally available array
+			graphData = data;
+			drawGraph();
+		});
 	});
-	
-	//store data in globally available array
-	graphData = data;
-	drawGraph();
 }
 
-//this function receives the settings
-function receiveSettings(topicUri, event){
-	var settings = d3.tsv.parse(event);
-	thermoRefVoltage = parseFloat(settings[0].RefVolt);
-	thermoRangeMax = parseFloat(settings[0].RangeMax);
-	thermoRangeMin = parseFloat(settings[0].RangeMin);
+function sendThermoSettings(){
+	//read values from form
+	sendRefVolt = document.getElementById('refVolt').value;
+	sendTempRangeEnd = document.getElementById('tempRangeEnd').value;
+	sendTempRangeStart = document.getElementById('tempRangeStart').value;
+	
+	//send these values
+	sess.call("rpc:newThermoSettings", sendRefVolt, sendTempRangeEnd, sendTempRangeStart).then(
+		function (result) {
+			console.log('Successfully reset graph with new settings');
+		}, function (error) {
+			console.log('Error resettings graph or sending settings');
+			console.log(error);
+		}
+	);
 }
 
 window.onload = function () {
@@ -59,18 +101,14 @@ window.onload = function () {
 	      retryCount = 0;
 	
 	      sess.prefix("event", "http://raumgeist.dyndns.org/thermo#");
-	      sess.subscribe("event:rawValue", onAnalogValue);
-	      sess.subscribe("event:entireDB", receiveAllValues);
-	      sess.subscribe("event:thermoSettings", receiveSettings);
+	      sess.subscribe("event:rawValue", newRawDataReceived);
 	
 	      sess.prefix("rpc", "http://raumgeist.dyndns.org/thermoControl#");
 	
 	      eventCnt = 0;
 	
-	      //receive entire graph
-	      //get data once in the beginning
+	      //get entire data once in the beginning
 	      askForSettings();
-	      askForAllValues();
 	      
 	      //window.setInterval(updateEventCnt, eventCntUpdateInterval * 1000);
 	   },
@@ -83,6 +121,10 @@ window.onload = function () {
 	   }
 	);
 }
+
+//----------------------------------------------------------
+//-------------------------- D3JS --------------------------
+//----------------------------------------------------------
 
 var	hoverLineX, //X-part of crosshair
 	hoverLineY, //Y-part of crosshair
@@ -215,6 +257,11 @@ currentTemperatureText = currentTemperatureGroup.append("text")
 //----------------------------------------SVG CREATION END----------------------------------------------
 //--------------------------------------------------------------------------------------------------------
 
+function calculateTemperature(rawTemp){
+	var temp = rawTemp / 1023.0 * thermoRefVoltage;
+	temp = thermoRangeMin + (temp * (thermoRangeMax - thermoRangeMin));
+	return temp.toFixed(1);
+}
 
 function setRange(){
 	//configure tick values and domain (range from to)
@@ -293,48 +340,8 @@ function mousemove(){
 }
 
 function brushFunction() {
-	if (runningBrush){
-	}
-	  x.domain(brush.empty() ? x2.domain() : brush.extent());
-	  graphMain.select("path").attr("d", line);
-	  graphMain.select(".x.axis").call(xAxis);
-	  runningBrush = false;
-}
-
-var tempClick = function(){
-	d3.tsv("getCurrentDatum.php", function(error, singleDatum) {
-		
-		singleDatum.forEach(function(d) {
-			d.Zeitpunkt = parseDate(d.Zeitpunkt);
-			d.Temperatur = +calculateTemperature(d.Temperatur);
-		});
-		
-		//add new data to array
-		graphData.push(singleDatum[0]);
-		
-		//rescale
-		var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
-		x2.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
-		y2.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
-		y.domain(y2.domain()); //set main window y scale to brush window scale
-		
-		//so vielleicht?
-		if (runningBrush){
-			var test3 = d3.time.minute.offset(new Date(), -10);
-			var test4 = d3.time.minute.offset(new Date(), 0);
-			brush.extent([test3,test4]);
-			graphBrush.select(".brush").call(brush);
-			x.domain(brush.extent()); //change window of main graph
-		}
-		
-		//draw new graphs
-		graphMain.select("path").attr("d", line);
-		graphMain.select(".x.axis").call(xAxis);
-		graphBrush.select("path").attr("d", line2);
-		graphBrush.select(".x.axis").call(xAxis2);
-		
-		//hier weiter
-		currentTemperatureText.text(singleDatum[0].Temperatur + "°C");
-	});
-	return;
+	x.domain(brush.empty() ? x2.domain() : brush.extent());
+	graphMain.select("path").attr("d", line);
+	graphMain.select(".x.axis").call(xAxis);
+	runningBrush = false; //disable the running brush
 }
