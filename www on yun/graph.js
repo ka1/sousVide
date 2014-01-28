@@ -1,3 +1,89 @@
+var sess = null;
+var wsuri = "ws://" + window.location.hostname + ":9000";
+var thermoRefVoltage, thermoRangeMax, thermoRangeMin;
+
+function onAnalogValue(topicUri, event) {
+	console.log(event);
+}
+
+function controlLed(status) {
+	sess.call("rpc:control-led", status).always(ab.log);
+}
+
+//this function is called once in the beginning
+function askForAllValues(){
+	sess.call("rpc:getEntireDB", 500).always(ab.log);
+}
+
+//this function askes for the settings and is called once in the beginning
+function askForSettings(){
+	sess.call("rpc:getSettings").always(ab.log);
+}
+
+function calculateTemperature(rawTemp){
+	var temp = rawTemp / 1023.0 * thermoRefVoltage;
+	temp = thermoRangeMin + (temp * (thermoRangeMax - thermoRangeMin));
+	return temp.toFixed(1);
+}
+
+//this function is called once in the beginning, after all data has been requested
+function receiveAllValues(topicUri, event){
+	data = d3.tsv.parse(event);
+	data.forEach(function(d) {
+		d.Zeitpunkt = parseDate(d.Zeitpunkt);
+		d.Temperatur = +(calculateTemperature(d.Temperatur));
+	});
+	
+	//store data in globally available array
+	graphData = data;
+	drawGraph();
+}
+
+//this function receives the settings
+function receiveSettings(topicUri, event){
+	var settings = d3.tsv.parse(event);
+	thermoRefVoltage = parseFloat(settings[0].RefVolt);
+	thermoRangeMax = parseFloat(settings[0].RangeMax);
+	thermoRangeMin = parseFloat(settings[0].RangeMin);
+}
+
+window.onload = function () {
+	// connect to WAMP server
+	ab.connect(wsuri,
+	
+	   // WAMP session was established
+	   function (session) {
+	
+	      sess = session;
+	      console.log("Connected to " + wsuri);
+	      retryCount = 0;
+	
+	      sess.prefix("event", "http://raumgeist.dyndns.org/thermo#");
+	      sess.subscribe("event:rawValue", onAnalogValue);
+	      sess.subscribe("event:entireDB", receiveAllValues);
+	      sess.subscribe("event:thermoSettings", receiveSettings);
+	
+	      sess.prefix("rpc", "http://raumgeist.dyndns.org/thermoControl#");
+	
+	      eventCnt = 0;
+	
+	      //receive entire graph
+	      //get data once in the beginning
+	      askForSettings();
+	      askForAllValues();
+	      
+	      //window.setInterval(updateEventCnt, eventCntUpdateInterval * 1000);
+	   },
+	
+	   // WAMP session is gone
+	   function (code, reason) {
+	
+	      sess = null;
+	      console.log(reason);
+	   }
+	);
+}
+
 var	hoverLineX, //X-part of crosshair
 	hoverLineY, //Y-part of crosshair
 	hoverLayer, //group containing circle, and both texts in the center of the crosshair
@@ -130,21 +216,6 @@ currentTemperatureText = currentTemperatureGroup.append("text")
 //--------------------------------------------------------------------------------------------------------
 
 
-//get data once in the beginning
-d3.tsv("getData.php", function(error, data) {
-	
-	data.forEach(function(d) {
-		d.Zeitpunkt = parseDate(d.Zeitpunkt);
-		d.Temperatur = +(calculateTemperature(d.Temperatur));
-	});
-	
-	//store data in globally available array
-	graphData = data;
-	
-	drawGraph();
-	setInterval(tempClick, 2000);
-});
-
 function setRange(){
 	//configure tick values and domain (range from to)
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
@@ -228,12 +299,6 @@ function brushFunction() {
 	  graphMain.select("path").attr("d", line);
 	  graphMain.select(".x.axis").call(xAxis);
 	  runningBrush = false;
-}
-
-function calculateTemperature(rawTemp){
-	var temp = rawTemp / 1023.0 * thermoRefVoltage;
-	temp = thermoRangeMin + (temp * (thermoRangeMax - thermoRangeMin));
-	return temp.toFixed(1);
 }
 
 var tempClick = function(){

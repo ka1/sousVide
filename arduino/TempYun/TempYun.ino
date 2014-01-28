@@ -34,9 +34,9 @@ bool wemoProcessStarted = false;
 double Setpoint, Input, Output;
 byte WindowSize = 10; //in seconds = *1000
 unsigned long windowStartTime;
-unsigned long pid_kp; //*100
-int pid_ki; //*100
-int pid_kd; //*100
+unsigned long pid_kp; //*100 good: 800
+int pid_ki; //*100 good: .5
+int pid_kd; //*100 good: .1
 PID myPID(&Input, &Output, &Setpoint, 850, 0.5, 0.1, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
 
 // temperature settings

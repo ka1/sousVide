@@ -69,7 +69,7 @@ if (isset($_GET['tempRangeStart']) && isset($_GET['tempRangeEnd']) && isset($_GE
 		$errorMessage = "end must be within range";
 	} else if ($newTempRangeEnd < 0 || $newTempRangeEnd > 100){
 		$errorMessage = "end must be within range";
-	} else if ($newPid_kp < 0 || $newPid_kp > 1000){
+	} else if ($newPid_kp < 0 || $newPid_kp > 10000){
 		$errorMessage = "PID-kp must be within range";
 	} else if ($newPid_ki < 0 || $newPid_ki > 100){
 		$errorMessage = "PID-ki must be within range";
@@ -167,9 +167,9 @@ $timer->addtime('end of php block');
 <p><label>Wemo IP</label><input input type="text" value="<?php echo $wemoIp; ?>" name="wemoIp" pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}" /></p>
 <p><label>Wemo start °C </label><input type="number" value="<?php echo $wemoTempMin; ?>" name="wemoTempMin" min="0" max="100" step="0.01" required /></p>
 <p><label>Wemo end °C </label><input type="number" value="<?php echo $wemoTempMax; ?>" name="wemoTempMax" min="0" max="100" step="0.01" required /></p>
-<p><label>PID kp </label><input type="number" value="<?php echo $pid_kp; ?>" name="pid_kp" min="0" max="1000" step="0.01" /></p>
-<p><label>PID ki </label><input type="number" value="<?php echo $pid_ki; ?>" name="pid_ki" min="0" max="1000" step="0.01" /></p>
-<p><label>PID kd </label><input type="number" value="<?php echo $pid_kd; ?>" name="pid_kd" min="0" max="1000" step="0.01" /></p>
+<p><label>PID kp </label><input type="number" value="<?php echo $pid_kp; ?>" name="pid_kp" min="0" max="10000" step="0.01" /></p>
+<p><label>PID ki </label><input type="number" value="<?php echo $pid_ki; ?>" name="pid_ki" min="0" max="100" step="0.01" /></p>
+<p><label>PID kd </label><input type="number" value="<?php echo $pid_kd; ?>" name="pid_kd" min="0" max="100" step="0.01" /></p>
 
 <button>Save settings and reset graph</button>
 </form>

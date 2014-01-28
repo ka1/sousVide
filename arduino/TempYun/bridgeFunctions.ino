@@ -73,7 +73,7 @@ void tempCommand(YunClient client) {
 
   // Update datastore key with the current pin value
   //TODO: OK to comment:
-//  String key = "A";
-//  key += A0;
-//  Bridge.put(key, String((int)sensorValue));
+  String key = "A";
+  key += A0;
+  Bridge.put(key, String((int)sensorValue));
 }
