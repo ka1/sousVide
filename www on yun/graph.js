@@ -44,7 +44,10 @@ function controlLed(status) {
 }
 
 //this function askes for the settings and is called once in the beginning
-function askForSettings(){
+function askForSettings(updateGraph){
+	if (updateGraph == null){
+		updateGraph = true;
+	}
 	//sess.call("rpc:getSettings").always(ab.log);
 	sess.call("rpc:getSettings").then(function (result) {
 		//receive and parse settings
@@ -57,22 +60,32 @@ function askForSettings(){
 		document.getElementById('tempRangeEnd').value = thermoRangeMax;
 		document.getElementById('tempRangeStart').value = thermoRangeMin;
 		
-		//ask for all values
-		sess.call("rpc:getEntireDB", 500).then(function (resultValues) {
-			data = d3.tsv.parse(resultValues);
-			data.forEach(function(d) {
-				d.Zeitpunkt = parseDate(d.Zeitpunkt);
-				d.Temperatur = +(calculateTemperature(d.Temperatur));
+		if (updateGraph){
+			//ask for all values
+			sess.call("rpc:getEntireDB", 500).then(function (resultValues) {
+				data = d3.tsv.parse(resultValues);
+				data.forEach(function(d) {
+					d.Zeitpunkt = parseDate(d.Zeitpunkt);
+					d.Temperatur = +(calculateTemperature(d.Temperatur));
+				});
+				
+				//store data in globally available array
+				graphData = data;
+				drawGraph();
 			});
-			
-			//store data in globally available array
-			graphData = data;
-			drawGraph();
-		});
+		}
 	});
 }
 
 function sendThermoSettings(){
+	var theForm = document.getElementById('tempSettings');
+	if (!theForm.checkValidity()){
+		event.preventDefault();
+		alert("Error in values. Resetting values");
+		askForSettings(false);
+		return false;
+	}
+	
 	//read values from form
 	sendRefVolt = document.getElementById('refVolt').value;
 	sendTempRangeEnd = document.getElementById('tempRangeEnd').value;
@@ -83,8 +96,11 @@ function sendThermoSettings(){
 		function (result) {
 			console.log('Successfully reset graph with new settings');
 		}, function (error) {
+			alert("Server did not accept values. Resetting values");
 			console.log('Error resettings graph or sending settings');
 			console.log(error);
+			//receive (old) settings
+			askForSettings(false);
 		}
 	);
 }

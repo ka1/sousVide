@@ -7,9 +7,9 @@
 <script src="autobahn.min.js"></script>
 <script src="graph.js"></script>
 <br />
-<div><a href="temperatureSetup.php">Hardware settings</a></div>
 <button onclick="controlLed(false)">LED Off</button>
 <button onclick="controlLed(true)">LED On</button>
+<button onclick="runningBrush = true">(re)activate running brush</button>
 
 <form id="tempSettings" >
 <p><label>Range start °C </label><input type="number" value="" name="tempRangeStart" id="tempRangeStart" min="-220" max="1372" step="1" required /></p>
