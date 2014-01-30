@@ -214,7 +214,7 @@ void loop() {
   //send serial data once every x seconds
   //also compute PID
   if (millis() - lastTime > sendDelayMillis) {
-    getAnalog(0, A0);
+    getAnalog(A0, 0);
     lastTime = millis();
     Serial.print("FPS");
     Serial.println(fps);
@@ -241,8 +241,10 @@ void loop() {
         }
 
         if (Output > 50) {
-          Serial.print("Output ");
+          Serial.print("Sending output ");
           Serial.println(Output);
+          port->print("P");
+          port->println(Output);
         } else {
           Serial.print("Output small: ");
           Serial.println(Output);

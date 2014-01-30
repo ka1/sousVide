@@ -19,6 +19,8 @@
 
 import sys, time
 from struct import *
+from subprocess import Popen
+import os
 
 if sys.platform == 'win32':
 	## on windows, we need to use the following reactor for serial support
@@ -175,29 +177,37 @@ class McuProtocol(LineReceiver):
 
 
 	def lineReceived(self, line):
+	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
 		if self.wsMcuFactory.debugSerial:
 			print "Serial RX:", line
-		try:
-			## parse data received from MCU
-			##
-			data = [int(x) for x in line.split()]
+		if (line.startswith("P")):
+			print "PID detected"
+			pidLength = int(float(line[1:]))
+			p = Popen('/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200' + str(pidLength))
+			#subprocess.call("/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200")
+			#os.system('/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 ' + str(pidLength))
+			print pidLength
+		else:
+			try:
+				## parse data received from MCU
+				##
+				data = [int(x) for x in line.split()]
 
-			## construct PubSub event from raw data
-			##
-			evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'Temperatur': data[1]}
+				## construct PubSub event from raw data
+				##
+				evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'Temperatur': data[1]}
 
-			## publish event to all clients subscribed to topic
-			##
-			self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#rawValue", evt)
+				## publish event to all clients subscribed to topic
+				##
+				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#rawValue", evt)
 			
-			rawTemp = (data[1],)
-			sq3cur = sq3con.cursor()
-			sq3cur.execute("INSERT INTO temperatures (temperature) VALUES (?)", rawTemp)
-			sq3con.commit()
+				rawTemp = (data[1],)
+				sq3cur = sq3con.cursor()
+				sq3cur.execute("INSERT INTO temperatures (temperature) VALUES (?)", rawTemp)
+				sq3con.commit()
 
-
-		except ValueError:
-			log.err('Unable to parse value %s' % line)
+			except ValueError:
+				log.err('Unable to parse value %s' % line)
 
 ## Kais shutdown procedure
 def sqlite3Close():
