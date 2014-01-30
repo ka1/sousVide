@@ -16,6 +16,8 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 
+#include <PID_v1.h>
+
 const int ledPin = 13;
 int last = 0;
 
@@ -23,12 +25,6 @@ HardwareSerial *port;
 
 unsigned long lastTime;
 int sendDelayMillis = 1000;
-
-//safe PID values
-//float pid_settemp = 0;
-//float pid_p = 0;
-//float pid_i = 0;
-//float pid_d = 0;
 
 //thermo settings for later
 float reference_voltage;
@@ -41,9 +37,10 @@ float temp_range_min;
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
 
+//last serial command
 int last_cmd = -1;
 
-
+//direct memory access
 byte *pPidData;
 float *pPid_settemp;
 float *pPid_p;
@@ -53,7 +50,14 @@ float *range_min;
 float *range_max;
 float *referenceVoltage;
 
+//PID
+double Input, Output, Setpoint;
+byte WindowSize = 10; //in seconds = *1000
+unsigned long windowStartTime;
+PID myPID(&Input, &Output, &Setpoint, 0, 0, 0, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
+bool pidStarted = false;
 
+//count how often the loop runs in a second
 int fps = 0;
 
 void setup() {
@@ -83,7 +87,8 @@ void setup() {
   }
 
   lastTime = millis();
-  
+
+  //set the memory adresses of the pid settings
   pPidData = (byte *)malloc(28);
   pPid_settemp = (float *)pPidData;
   pPid_p = (float *)(pPidData + 4);
@@ -92,12 +97,24 @@ void setup() {
   range_min = (float *)(pPidData + 16);
   range_max = (float *)(pPidData + 20);
   referenceVoltage = (float *)(pPidData + 24);
+
+  //PID
+  windowStartTime = millis();
+  //initialize the variables we're linked to
+  Setpoint = 0;
+  //tell the PID to range between 0 and the full window size
+  myPID.SetOutputLimits(0, WindowSize * 1000); //- 1000 for a bit of time for the php process to return value
+  //set sample time
+  myPID.SetSampleTime(1000);
+  //turn the PID on
+  myPID.SetMode(AUTOMATIC);
+
 }
 
 float calculateTemperature(int rawTemp) {
-  float temp = ((float)rawTemp / 1023.0) * ((float) reference_voltage);
-  temp = ((float) temp_range_min) + (temp * (((float)temp_range_max) - ((float)temp_range_min)));
-  return round(temp*10.0) / 10.0;
+  float temp = ((float)rawTemp / 1023.0) * ((float) * referenceVoltage);
+  temp = ((float) * range_min) + (temp * (((float) * range_max) - ((float) * range_min)));
+  return round(temp * 10.0) / 10.0;
 }
 
 int indexOfMax(int array[]) {
@@ -145,29 +162,21 @@ void getAnalog(int pin, int id) {
   //}
 }
 
-float readFourByteFloat() {
-  //wait until 4 available
-  while (port->available() < 4);
-  
-  float value;
-  port->readBytes((char*)&value, 4);
-  return value;
-}
-
 void loop() {
   //if receiving new PID values
   if (last_cmd == -1 && port->available()) {
     //read command
     last_cmd = port->read();
   }
-  
-  if (last_cmd != -1) 
-  {    
+
+  //Compute commands
+  if (last_cmd != -1)
+  {
     if ((last_cmd == 'P') && (port->available() >= 16))
-    {      
+    {
       port->readBytes((char *)pPidData, 28);
- 
-      Serial.print(F("Received new PID values: Input "));
+
+      Serial.print(F("Received new PID values: Setpoint "));
       Serial.print(*pPid_settemp);
       Serial.print(F("C - P"));
       Serial.print(*pPid_p);
@@ -181,11 +190,15 @@ void loop() {
       Serial.print(*range_max);
       Serial.print(F(" - REFVOLT "));
       Serial.println(*referenceVoltage);
-         
-      last_cmd = -1;      
+
+      //safe to PID controller
+      Setpoint = *pPid_settemp;
+      myPID.SetTunings(*pPid_p,*pPid_i,*pPid_d);
+      pidStarted = true;
+      last_cmd = -1;
     }
     else if ((last_cmd == 'O') && (port->available() >= 1))
-    {      
+    {
       //only switch LED on and off
       int inByte = port->read();
       if (inByte == '0') {
@@ -193,17 +206,50 @@ void loop() {
       } else if (inByte == '1') {
         digitalWrite(ledPin, HIGH);
       }
-    
+
       last_cmd = -1;
     }
   }
 
   //send serial data once every x seconds
+  //also compute PID
   if (millis() - lastTime > sendDelayMillis) {
     getAnalog(0, A0);
     lastTime = millis();
     Serial.print("FPS");
     Serial.println(fps);
+
+    if (pidStarted) {
+      //compute PID
+      Input = calculateTemperature(median(rawData));
+      myPID.Compute();
+
+
+      //see if the window has passed
+      if (millis() - windowStartTime > (WindowSize * 1000))
+      { //time to shift the Relay Window
+        windowStartTime += (WindowSize * 1000);
+
+        //if the time is STILL more than one windowsSize ahead, send error and reset window
+        if (millis() - windowStartTime > (WindowSize * 1000)) {
+          Serial.println(F("---RESET---"));
+          windowStartTime = millis();
+        }
+
+        if (Output > (WindowSize * 1000)) {
+          Serial.println(F("PID LIB ERR")); // sanity check
+        }
+
+        if (Output > 50) {
+          Serial.print("Output ");
+          Serial.println(Output);
+        } else {
+          Serial.print("Output small: ");
+          Serial.println(Output);
+        }
+      }
+
+    }
     fps = 0;
   }
 
