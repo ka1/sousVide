@@ -25,10 +25,10 @@ unsigned long lastTime;
 int sendDelayMillis = 1000;
 
 //safe PID values
-float pid_settemp = 0;
-float pid_p = 0;
-float pid_i = 0;
-float pid_d = 0;
+//float pid_settemp = 0;
+//float pid_p = 0;
+//float pid_i = 0;
+//float pid_d = 0;
 
 //thermo settings for later
 float reference_voltage;
@@ -36,19 +36,23 @@ float temp_range_max;
 float temp_range_min;
 
 //define the size of the median buffer
-#define RAWDATASIZE 50
+#define RAWDATASIZE 100
 #define RAWDATAMEDIANIDX RAWDATASIZE / 2
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
 
 int last_cmd = -1;
-boolean last_cmd_valid = false;
 
-union {
-  unsigned long a;
-  byte b[4];
-  float f;
-} floatUnion;
+
+byte *pPidData;
+float *pPid_settemp;
+float *pPid_p;
+float *pPid_i;
+float *pPid_d;
+float *range_min;
+float *range_max;
+float *referenceVoltage;
+
 
 int fps = 0;
 
@@ -79,6 +83,15 @@ void setup() {
   }
 
   lastTime = millis();
+  
+  pPidData = (byte *)malloc(28);
+  pPid_settemp = (float *)pPidData;
+  pPid_p = (float *)(pPidData + 4);
+  pPid_i = (float *)(pPidData + 8);
+  pPid_d = (float *)(pPidData + 12);
+  range_min = (float *)(pPidData + 16);
+  range_max = (float *)(pPidData + 20);
+  referenceVoltage = (float *)(pPidData + 24);
 }
 
 float calculateTemperature(int rawTemp) {
@@ -143,30 +156,31 @@ float readFourByteFloat() {
 
 void loop() {
   //if receiving new PID values
-  if (last_cmd_valid == -1 && port->available()) {
+  if (last_cmd == -1 && port->available()) {
     //read command
     last_cmd = port->read();
   }
   
-  if (last_cmd_valid != -1) 
+  if (last_cmd != -1) 
   {    
     if ((last_cmd == 'P') && (port->available() >= 16))
-    {
-      float data[4];
-      port->readBytes((char *)data, 16);      
-      pid_settemp = data[0];
-      pid_p = data[1];
-      pid_i = data[2];
-      pid_d = data[3];
-      
+    {      
+      port->readBytes((char *)pPidData, 28);
+ 
       Serial.print(F("Received new PID values: Input "));
-      Serial.print(pid_settemp);
+      Serial.print(*pPid_settemp);
       Serial.print(F("C - P"));
-      Serial.print(pid_p);
+      Serial.print(*pPid_p);
       Serial.print(F(" - I"));
-      Serial.print(pid_i);
+      Serial.print(*pPid_i);
       Serial.print(F(" - D"));
-      Serial.println(pid_d);
+      Serial.println(*pPid_d);
+      Serial.print(F("Received new Thermo values: MIN "));
+      Serial.print(*range_min);
+      Serial.print(F(" - MAX "));
+      Serial.print(*range_max);
+      Serial.print(F(" - REFVOLT "));
+      Serial.println(*referenceVoltage);
          
       last_cmd = -1;      
     }
@@ -198,7 +212,7 @@ void loop() {
   rawDataIdx++;
   rawDataIdx %= RAWDATASIZE;
 
-  // limit update frequency to 50Hz
+  // limit update frequency to around 100Hz
   fps++;
-  delay(6);
+  delay(9);
 }

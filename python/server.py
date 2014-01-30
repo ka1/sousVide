@@ -166,7 +166,7 @@ class McuProtocol(LineReceiver):
 		#TODO: SEND TO ARDUINO
 		if self.wsMcuFactory.debugSerial:
 			print "Sending PID settings to Arduino: " + str(newPidSettemp)
-		binaryPid = pack('<ffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd)
+		binaryPid = pack('<fffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, set_min, set_max, referenceVoltage)
 		self.transport.write("P" + binaryPid)
 		return True
 
