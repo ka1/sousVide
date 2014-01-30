@@ -18,6 +18,7 @@
 
 
 import sys, time
+from struct import *
 
 if sys.platform == 'win32':
 	## on windows, we need to use the following reactor for serial support
@@ -78,7 +79,7 @@ class McuProtocol(LineReceiver):
 			payload = '0'
 		if self.wsMcuFactory.debugSerial:
 			print "Serial TX:", payload
-		self.transport.write(payload)
+		self.transport.write("O" + payload)
 		
 	@exportRpc("getEntireDB")
 	def readTemperatureDB(self, numberTotal):
@@ -108,6 +109,18 @@ class McuProtocol(LineReceiver):
 			thermosetupTsv += str("{0}\t{1}\t{2}\n".format(row[0], row[1], row[2]))
 		return thermosetupTsv
 
+	@exportRpc("getPidSettings")
+	def readPidSettings(self):
+		if self.wsMcuFactory.debugSerial:
+			print "reading PID Settings"
+		sq3cur = sq3con.cursor()
+		sq3cur.execute("SELECT wemo_ip, wemo_temp_max, pid_kp, pid_ki, pid_kd FROM `thermosetup`")
+		pidsetup = sq3cur.fetchall()
+		pidsetupTsv = "wemoIp\tpid_settemp\tpid_kp\tpid_ki\tpid_kd\n"
+		for row in pidsetup:
+			pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\n".format(row[0], row[1], row[2], row[3], row[4]))
+		return pidsetupTsv
+
 	##Updates the settings in the database and resets the database
 	@exportRpc("newThermoSettings")
 	def writeThermoSettings(self, newRefVolt, newTempEnd, newTempStart):
@@ -123,6 +136,34 @@ class McuProtocol(LineReceiver):
 		sq3cur.execute("UPDATE thermosetup SET set_min = ?, set_max = ?, referenceVoltage = ?", thermoSettings)
 		sq3cur.execute("DELETE FROM temperatures")
 		sq3cur.execute("DELETE FROM SQLITE_SEQUENCE WHERE name = 'temperatures'")
+		return True
+
+	@exportRpc("newPIDSettings")
+	def writePIDSettings(self, newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd):
+		#Parse floats
+		newWemoIP = newWemoIP
+		newPidSettemp = float(newPidSettemp)
+		newPID_kp = float(newPID_kp)
+		newPID_ki = float(newPID_ki)
+		newPID_kd = float(newPID_kd)
+		#Validate
+		if (newPidSettemp > 80 or newPidSettemp < 0):
+			raise Exception("Set Temperature must be between 0 C and 80 C")
+		if (newPID_kp > 20000 or newPID_kp < 0):
+			raise Exception("PID - P must be between 0 and 20000")
+		if (newPID_ki > 200 or newPID_ki < 0):
+			raise Exception("PID - I must be between 0 and 200")
+		if (newPID_kd > 200 or newPID_kd < 0):
+			raise Exception("PID - D must be between 0 and 200")
+		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd)
+		sq3cur = sq3con.cursor()
+		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?", thermoSettings)
+		#TODO: SEND TO ARDUINO
+		if self.wsMcuFactory.debugSerial:
+			print "Sending PID settings to Arduino: " + str(newPidSettemp)
+		binaryPid = pack('ffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd)
+		#binaryPid = pack('f', newPidSettemp)
+		self.transport.write("P" + binaryPid)
 		return True
 
 	def connectionMade(self):

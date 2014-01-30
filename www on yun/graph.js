@@ -36,6 +36,7 @@ function newRawDataReceived(topicUri, singleDatum) {
 	graphBrush.select(".x.axis").call(xAxis2);
 	
 	currentTemperatureText.text(singleDatum.Temperatur + "°C");
+	console.log("received " + singleDatum.Temperatur + "C");
 	return;
 }
 
@@ -77,11 +78,69 @@ function askForSettings(updateGraph){
 	});
 }
 
+//this function askes for the settings and is called once in the beginning
+function askForPidSettings(){
+	sess.call("rpc:getPidSettings").then(function (result) {
+		//receive and parse settings
+		var settings = d3.tsv.parse(result);
+		wemoIp = settings[0].wemoIp;
+		pid_settemp = parseFloat(settings[0].pid_settemp);
+		pid_kp = parseFloat(settings[0].pid_kp);
+		pid_ki = parseFloat(settings[0].pid_ki);
+		pid_kd = parseFloat(settings[0].pid_kd);
+		
+		document.getElementById('wemoIp').value = wemoIp;
+		document.getElementById('pid_settemp').value = pid_settemp;
+		document.getElementById('pid_kp').value = pid_kp;
+		document.getElementById('pid_ki').value = pid_ki;
+		document.getElementById('pid_kd').value = pid_kd;
+	});
+}
+
+function sendPIDSettings(){
+	var theForm = document.getElementById('pidSettings');
+	if (!theForm.checkValidity()){
+		event.preventDefault();
+		alert("Error in PID values. Resetting values");
+		//receive (old) settings
+		askForPidSettings(false);
+		return false;
+	}
+
+	//read values from form
+	sendWemoIp = document.getElementById('wemoIp').value;
+	sendPid_settemp = document.getElementById('pid_settemp').value;
+	sendPid_kp = document.getElementById('pid_kp').value;
+	sendPid_ki = document.getElementById('pid_ki').value;
+	sendPid_kd = document.getElementById('pid_kd').value;
+
+	//send these values
+	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd).then(
+		function (result) {
+			console.log('Successfully sent settings');
+		}, function (error) {
+			alert("Server did not accept PID values. Resetting values");
+			console.log('Error setting PID settings');
+			console.log(error);
+			//receive (old) settings
+			askForPidSettings(false);
+		}
+	);
+
+}
+
 function sendThermoSettings(){
+	if (!confirm("Are you sure you want to reset the graph?")){
+		//receive (old) settings
+		askForSettings(false);
+		return false;
+	}
+	
 	var theForm = document.getElementById('tempSettings');
 	if (!theForm.checkValidity()){
 		event.preventDefault();
 		alert("Error in values. Resetting values");
+		//receive (old) settings
 		askForSettings(false);
 		return false;
 	}
@@ -94,6 +153,7 @@ function sendThermoSettings(){
 	//send these values
 	sess.call("rpc:newThermoSettings", sendRefVolt, sendTempRangeEnd, sendTempRangeStart).then(
 		function (result) {
+			graphData.length = 0;
 			console.log('Successfully reset graph with new settings');
 		}, function (error) {
 			alert("Server did not accept values. Resetting values");
@@ -125,6 +185,7 @@ window.onload = function () {
 	
 	      //get entire data once in the beginning
 	      askForSettings();
+	      askForPidSettings();
 	      
 	      //window.setInterval(updateEventCnt, eventCntUpdateInterval * 1000);
 	   },
@@ -148,7 +209,7 @@ var	hoverLineX, //X-part of crosshair
 	hoverTextDate, //date next to crosshair 
 	currentTemperatureText, //temperature next to crosshair
 	runningBrush = true,
-	graphData; //the data
+	graphData = []; //the data
 
 var startWindowTime = 1800, //Window width in seconds
 	temperatureMargin = 5; //temperature scope to extend beyond real scope

@@ -17,7 +17,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 const int ledPin = 13;
-
 int last = 0;
 
 HardwareSerial *port;
@@ -25,63 +24,111 @@ HardwareSerial *port;
 unsigned long lastTime;
 int sendDelayMillis = 1000;
 
-void setup() {
+//safe PID values
+float pid_settemp = 0;
+float pid_p = 0;
+float pid_i = 0;
+float pid_d = 0;
 
-// We need to use different serial ports on different Arduinos
-//
-// See:
-//   - Arduino/hardware/tools/avr/avr/include/avr/io.h
-//   - http://electronics4dogs.blogspot.de/2011/01/arduino-predefined-constants.html
-//
+void setup() {
+  // We need to use different serial ports on different Arduinos
+  //
+  // See:
+  //   - Arduino/hardware/tools/avr/avr/include/avr/io.h
+  //   - http://electronics4dogs.blogspot.de/2011/01/arduino-predefined-constants.html
+  //
 #ifdef __AVR_ATmega32U4__
-   port = &Serial1; // Arduino Yun
+  port = &Serial1; // Arduino Yun
 #else
-   port = &Serial;  // Arduino Mega and others
+  port = &Serial;  // Arduino Mega and others
 #endif
 
-   port->begin(9600);
+  //EXTERNAL AREF Voltage should be 1.134V
+  analogReference(EXTERNAL);
 
-   pinMode(ledPin, OUTPUT);
-   digitalWrite(ledPin, LOW);
-   
-   lastTime = millis();
+  port->begin(9600);
+
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
+
+  lastTime = millis();
 }
 
 
 void getAnalog(int pin, int id) {
-   // read analog value and map/constrain to output range
-   int cur = analogRead(pin);
-  
-   // if value changed, forward on serial (as ASCII)
-   // changed to: always send!
-   // if (cur != last) {
-      last = cur;
-      port->print(id);
-      port->print('\t');
-      port->print(last);
-      port->println();
-   //}  
+  // read analog value and map/constrain to output range
+  int cur = analogRead(pin);
+
+  // if value changed, forward on serial (as ASCII)
+  // changed to: always send!
+  // if (cur != last) {
+  last = cur;
+  port->print(id);
+  port->print('\t');
+  port->print(last);
+  port->println();
+  //}
 }
 
+union {
+  unsigned long a;
+  byte b[4];
+  float f;
+} floatUnion;
 
-void loop() {
-  
-   // control LED via commands read from serial  
-   if (port->available()) {
-      int inByte = port->read();
-      if (inByte == '0') {
-         digitalWrite(ledPin, LOW);
-      } else if (inByte == '1') {
-         digitalWrite(ledPin, HIGH);
-      }
-   }
-  
-  //send serial data once every x seconds
-  if (millis() - lastTime > sendDelayMillis) {
-   getAnalog(0, A0);
-   lastTime = millis();
+float readFourByteFloat() {
+  //wait until 4 available
+  while (port->available() < 4);
+
+  int idx = 0;
+  while (idx < 4) {
+    floatUnion.b[3 - idx] = (byte) port->read();
+    idx++;
   }
 
-   // limit update frequency to 50Hz
-   delay(20);
+  return floatUnion.f;
+}
+
+void loop() {
+  //if receiving new PID values
+  if (port->available()) {
+    //read command
+    char cmd = port->read();
+
+    if (cmd == 'P')
+    {
+      //read bytes into floats
+      pid_settemp = readFourByteFloat();
+      pid_p = readFourByteFloat();
+      pid_i = readFourByteFloat();
+      pid_d = readFourByteFloat();
+
+      Serial.print(F("Received new PID values: Input "));
+      Serial.print(pid_settemp);
+      Serial.print(F("C - P"));
+      Serial.print(pid_p);
+      Serial.print(F(" - I"));
+      Serial.print(pid_i);
+      Serial.print(F(" - D"));
+      Serial.println(pid_d);
+    }
+    else if (cmd == 'O') {
+      //only switch LED on and off
+      int inByte = port->read();
+      if (inByte == '0') {
+        digitalWrite(ledPin, LOW);
+      } else if (inByte == '1') {
+        digitalWrite(ledPin, HIGH);
+      }
+    }
+  }
+
+  //send serial data once every x seconds
+  if (millis() - lastTime > sendDelayMillis) {
+    getAnalog(0, A0);
+    lastTime = millis();
+  }
+
+  // limit update frequency to 50Hz
+  delay(20);
 }
