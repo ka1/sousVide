@@ -43,6 +43,11 @@ from autobahn.wamp import WampServerFactory, WampServerProtocol, exportRpc
 import sqlite3
 sq3con = None
 
+#Thermosetup
+set_min = 0
+set_max = 0
+referenceVoltage = 0
+
 class Serial2WsOptions(usage.Options):
 	
 	optFlags = [
@@ -100,13 +105,9 @@ class McuProtocol(LineReceiver):
 	@exportRpc("getSettings")
 	def readTemperatureSettings(self):
 		if self.wsMcuFactory.debugSerial:
-			print "reading Settings"
-		sq3cur = sq3con.cursor()
-		sq3cur.execute("SELECT set_min,set_max,referenceVoltage FROM `thermosetup`")
-		thermosetup = sq3cur.fetchall()
+			print "sending runtime Settings" + str(referenceVoltage)
 		thermosetupTsv = "RangeMin\tRangeMax\tRefVolt\n"
-		for row in thermosetup:
-			thermosetupTsv += str("{0}\t{1}\t{2}\n".format(row[0], row[1], row[2]))
+		thermosetupTsv += str("{0}\t{1}\t{2}\n".format(set_min, set_max, referenceVoltage))
 		return thermosetupTsv
 
 	@exportRpc("getPidSettings")
@@ -136,6 +137,10 @@ class McuProtocol(LineReceiver):
 		sq3cur.execute("UPDATE thermosetup SET set_min = ?, set_max = ?, referenceVoltage = ?", thermoSettings)
 		sq3cur.execute("DELETE FROM temperatures")
 		sq3cur.execute("DELETE FROM SQLITE_SEQUENCE WHERE name = 'temperatures'")
+		#Safe settings for runtime
+		referenceVoltage = newRefVolt
+		set_min = newTempStart
+		set_max = newTempEnd
 		return True
 
 	@exportRpc("newPIDSettings")
@@ -161,8 +166,7 @@ class McuProtocol(LineReceiver):
 		#TODO: SEND TO ARDUINO
 		if self.wsMcuFactory.debugSerial:
 			print "Sending PID settings to Arduino: " + str(newPidSettemp)
-		binaryPid = pack('ffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd)
-		#binaryPid = pack('f', newPidSettemp)
+		binaryPid = pack('<ffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd)
 		self.transport.write("P" + binaryPid)
 		return True
 
@@ -199,6 +203,18 @@ class McuProtocol(LineReceiver):
 def sqlite3Close():
 	sq3con.close()
 	print "Database closed successfully"
+	
+##Loads the thermometer settings from database for the runtime
+def loadThermoSettings():
+	global set_min, set_max, referenceVoltage
+	sq3cur = sq3con.cursor()
+	sq3cur.execute("SELECT set_min,set_max,referenceVoltage FROM `thermosetup`")
+	thermosetup = sq3cur.fetchone()
+	set_min = float(thermosetup[0])
+	set_max = float(thermosetup[1])
+	referenceVoltage = float(thermosetup[2])
+	print "Settings read from database for runtime: " + str(referenceVoltage)
+
 
 ## WS-MCU protocol
 ##
@@ -252,6 +268,7 @@ if __name__ == '__main__':
 	except usage.UsageError, errortext:
 		print 'DB Connection error'
 		sys.exit(1)
+	loadThermoSettings()
 	reactor.addSystemEventTrigger('before', 'shutdown', sqlite3Close)
 
 	## start Twisted log system
