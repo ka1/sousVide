@@ -61,19 +61,17 @@ bool pidStarted = false;
 int fps = 0;
 
 void setup() {
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, HIGH);
+
   port = &Serial1; // Arduino Yun
   //Wait! Otherwise, at startup, the connection to the python script will not be established
-  while (!port) {
-    ;
-  }
+  while (!Serial1);
 
   //EXTERNAL AREF Voltage should be 1.134V
   analogReference(EXTERNAL);
 
   port->begin(9600);
-
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
 
   //fill data array with zeros
   for (int i = 0; i < RAWDATASIZE; i++) {
@@ -103,6 +101,7 @@ void setup() {
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
 
+  digitalWrite(ledPin, LOW);
 }
 
 float calculateTemperature(int rawTemp) {

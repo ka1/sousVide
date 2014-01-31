@@ -5,6 +5,7 @@
 var sess = null;
 var wsuri = "ws://" + window.location.hostname + ":9000";
 var thermoRefVoltage, thermoRangeMax, thermoRangeMin;
+var pidSetTemp = 0;
 
 //function receives WS new data event and draws the single datum
 function newRawDataReceived(topicUri, singleDatum) {
@@ -32,6 +33,7 @@ function newRawDataReceived(topicUri, singleDatum) {
 	//draw new graphs
 	graphMain.select("path").attr("d", line);
 	graphMain.select(".x.axis").call(xAxis);
+	graphMain.select(".y.axis").call(yAxis);
 	graphBrush.select("path").attr("d", line2);
 	graphBrush.select(".x.axis").call(xAxis2);
 	
@@ -100,6 +102,7 @@ function askForPidSettings(){
 		document.getElementById('pid_ki').value = pid_ki;
 		document.getElementById('pid_kd').value = pid_kd;
 		pidSetTemp = pid_settemp;
+		
 	});
 }
 
@@ -123,6 +126,24 @@ function sendPIDSettings(){
 	//send these values
 	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd).then(
 		function (result) {
+			//safe the values
+			pidSetTemp = parseFloat(sendPid_settemp);
+			//update settemp lines
+			graphMain
+				.select(".rightOnTemp")
+				.transition()
+				.duration(1000)
+				.attr("transform","translate(0," + y(pidSetTemp) + ")");
+			graphMain
+				.select("#blurTop")
+				.transition()
+				.duration(1000)
+				.attr("transform","translate(0," + y(pidSetTemp + pidSetTempBlur) + ")");
+			graphMain
+				.select("#blurBottom")
+				.transition()
+				.duration(1000)
+				.attr("transform","translate(0," + y(pidSetTemp - pidSetTempBlur) + ")");
 			console.log('Successfully sent settings');
 		}, function (error) {
 			alert("Server did not accept PID values. Resetting values");
@@ -219,8 +240,6 @@ var	hoverLineX, //X-part of crosshair
 
 var startWindowTime = 1800, //Window width in seconds
 	temperatureMargin = 5; //temperature scope to extend beyond real scope
-
-var pidSetTemp = 0;
 
 var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
 var bisectDate = d3.bisector(function(d) { return d.Zeitpunkt; }).left;
