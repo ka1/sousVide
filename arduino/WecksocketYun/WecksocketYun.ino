@@ -61,17 +61,11 @@ bool pidStarted = false;
 int fps = 0;
 
 void setup() {
-  // We need to use different serial ports on different Arduinos
-  //
-  // See:
-  //   - Arduino/hardware/tools/avr/avr/include/avr/io.h
-  //   - http://electronics4dogs.blogspot.de/2011/01/arduino-predefined-constants.html
-  //
-#ifdef __AVR_ATmega32U4__
   port = &Serial1; // Arduino Yun
-#else
-  port = &Serial;  // Arduino Mega and others
-#endif
+  //Wait! Otherwise, at startup, the connection to the python script will not be established
+  while (!port) {
+    ;
+  }
 
   //EXTERNAL AREF Voltage should be 1.134V
   analogReference(EXTERNAL);
@@ -156,7 +150,7 @@ void getAnalog(int pin, int id) {
   int cur = median(rawData);
 
   port->print(id);
-  port->print('\t');
+  port->print(F('\t'));
   port->print(cur);
   port->println();
   //}
@@ -216,7 +210,7 @@ void loop() {
   if (millis() - lastTime > sendDelayMillis) {
     getAnalog(A0, 0);
     lastTime = millis();
-    Serial.print("FPS");
+    Serial.print(F("FPS"));
     Serial.println(fps);
 
     if (pidStarted) {
@@ -232,7 +226,7 @@ void loop() {
 
         //if the time is STILL more than one windowsSize ahead, send error and reset window
         if (millis() - windowStartTime > (WindowSize * 1000)) {
-          Serial.println(F("---RESET---"));
+          Serial.println(F("---RESETTING WINDOW---"));
           windowStartTime = millis();
         }
 
@@ -241,12 +235,12 @@ void loop() {
         }
 
         if (Output > 50) {
-          Serial.print("Sending output ");
+          Serial.print(F("Sending output "));
           Serial.println(Output);
-          port->print("P");
+          port->print(F("P"));
           port->println(Output);
         } else {
-          Serial.print("Output small: ");
+          Serial.print(F("Output small: "));
           Serial.println(Output);
         }
       }

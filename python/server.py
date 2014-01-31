@@ -45,11 +45,17 @@ from autobahn.wamp import WampServerFactory, WampServerProtocol, exportRpc
 import sqlite3
 sq3con = None
 p = None
+pSkipped = 0
 
 #Thermosetup
 set_min = 0
 set_max = 0
 referenceVoltage = 0
+pid_p = 0
+pid_i = 0
+pid_d = 0
+pid_settemp = 0
+wemoIp = ""
 
 class Serial2WsOptions(usage.Options):
 	
@@ -108,7 +114,7 @@ class McuProtocol(LineReceiver):
 	@exportRpc("getSettings")
 	def readTemperatureSettings(self):
 		if self.wsMcuFactory.debugSerial:
-			print "sending runtime Settings" + str(referenceVoltage)
+			print "sending runtime thermo settings" + str(referenceVoltage)
 		thermosetupTsv = "RangeMin\tRangeMax\tRefVolt\n"
 		thermosetupTsv += str("{0}\t{1}\t{2}\n".format(set_min, set_max, referenceVoltage))
 		return thermosetupTsv
@@ -116,18 +122,15 @@ class McuProtocol(LineReceiver):
 	@exportRpc("getPidSettings")
 	def readPidSettings(self):
 		if self.wsMcuFactory.debugSerial:
-			print "reading PID Settings"
-		sq3cur = sq3con.cursor()
-		sq3cur.execute("SELECT wemo_ip, wemo_temp_max, pid_kp, pid_ki, pid_kd FROM `thermosetup`")
-		pidsetup = sq3cur.fetchall()
+			print "sending runtime PID settings"
 		pidsetupTsv = "wemoIp\tpid_settemp\tpid_kp\tpid_ki\tpid_kd\n"
-		for row in pidsetup:
-			pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\n".format(row[0], row[1], row[2], row[3], row[4]))
+		pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\n".format(wemoIp, pid_settemp, pid_p, pid_i, pid_d))
 		return pidsetupTsv
 
 	##Updates the settings in the database and resets the database
 	@exportRpc("newThermoSettings")
 	def writeThermoSettings(self, newRefVolt, newTempEnd, newTempStart):
+		global referenceVoltage, set_min, set_max
 		newTempEnd = float(newTempEnd)
 		newTempStart = float(newTempStart)
 		newRefVolt = float(newRefVolt)
@@ -148,6 +151,7 @@ class McuProtocol(LineReceiver):
 
 	@exportRpc("newPIDSettings")
 	def writePIDSettings(self, newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd):
+		global pid_p, pid_i, pid_d, pid_settemp, wemoIp
 		#Parse floats
 		newWemoIP = newWemoIP
 		newPidSettemp = float(newPidSettemp)
@@ -167,9 +171,15 @@ class McuProtocol(LineReceiver):
 		sq3cur = sq3con.cursor()
 		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?", thermoSettings)
 		if self.wsMcuFactory.debugSerial:
-			print "Sending PID settings to Arduino: " + str(newPidSettemp)
+			print "Sending PID and THERMO settings to Arduino: " + str(newPidSettemp)
 		binaryPid = pack('<fffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, set_min, set_max, referenceVoltage)
 		self.transport.write("P" + binaryPid)
+		#safe PID settings for runtime
+		pid_p = newPID_kp
+		pid_i = newPID_ki
+		pid_d = newPID_kd
+		pid_settemp = newPidSettemp
+		wemoIp = newWemoIP
 		return True
 
 	def connectionMade(self):
@@ -178,18 +188,19 @@ class McuProtocol(LineReceiver):
 
 	def lineReceived(self, line):
 	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
-		global p
+		global p, pSkipped
 		if self.wsMcuFactory.debugSerial:
 			print "Serial RX:", line
 		if (line.startswith("P")):
 			pidLength = int(float(line[1:]))
 			print "PID detected: " + str(pidLength / 1000) + " seconds"
-			if (p):
-				if (p.poll() == None):
+			if (p and (p.poll() == None)):
 					#TODO: manage autoexit. run a php-shutdown script. then maybe count the number of failures and do a total exit after 5 or so?
-					print "ALERT. PROCESS STILL RUNNING. KILLING PROCESS"
-					p.kill()
-			p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php','192.168.4.149',str(pidLength)])
+					print "ALERT. PROCESS STILL RUNNING. SKIPPING THIS PROCESS RUN. SKIPPED " + str(pSkipped)
+					pSkipped += 1
+			else:
+				p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
+				pSkipped = 0
 		else:
 			try:
 				## parse data received from MCU
@@ -217,22 +228,31 @@ def sqlite3Close():
 	global p
 	if (p):
 		#TODO: wait for process to finish. then close the process after a while if not finished and run the php stop script
-		p.terminate()
-		print "PHP Process closed"
+		if (p.poll() == None):
+			p.kill()
+			#Sending shutoff signal
+			p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoOff.php',str(wemoIp)])
+			print "PHP wemo OFF called"
+		print "PHP process was closed at shutdown time"
 	sq3con.close()
 	print "Database closed successfully"
 	
 ##Loads the thermometer settings from database for the runtime
 def loadThermoSettings():
 	global set_min, set_max, referenceVoltage
+	global pid_p, pid_i, pid_d, pid_settemp, wemoIp
 	sq3cur = sq3con.cursor()
-	sq3cur.execute("SELECT set_min,set_max,referenceVoltage FROM `thermosetup`")
+	sq3cur.execute("SELECT set_min,set_max,referenceVoltage,pid_kp,pid_ki,pid_kd,wemo_temp_max,wemo_ip FROM `thermosetup`")
 	thermosetup = sq3cur.fetchone()
 	set_min = float(thermosetup[0])
 	set_max = float(thermosetup[1])
 	referenceVoltage = float(thermosetup[2])
-	print "Settings read from database for runtime: " + str(referenceVoltage)
-
+	pid_p = float(thermosetup[3])
+	pid_i = float(thermosetup[4])
+	pid_d = float(thermosetup[5])
+	pid_settemp = float(thermosetup[6])
+	wemoIp = thermosetup[7]
+	print "Settings read from database for runtime: eg. REFVOLT=" + str(referenceVoltage) + " and " + str(wemoIp)
 
 ## WS-MCU protocol
 ##
