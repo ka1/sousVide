@@ -103,7 +103,10 @@ class McuProtocol(LineReceiver):
 		sq3cur.execute("SELECT COUNT(*) FROM `temperatures`")
 		tempCount = sq3cur.fetchone()
 		getEveryN = round(float(tempCount[0]) / float(numberTotal), 0)
+		if getEveryN < 1:
+			getEveryN = 1
 		getEveryN = (getEveryN,)
+		print "getting " + str(getEveryN)
 		sq3cur.execute("SELECT temperature,datetime(timestamp,'unixepoch','localtime') AS timestamp,temp_ID FROM temperatures WHERE temperature != 0 AND temperature != 1023 AND temp_ID %? = 0 AND temp_ID > 60 ORDER BY temp_ID ASC", getEveryN)
 		dbContents = sq3cur.fetchall()
 		dbContentsTsv = "Ident\tZeitpunkt\tTemperatur\n"

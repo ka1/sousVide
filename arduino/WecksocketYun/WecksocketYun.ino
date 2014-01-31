@@ -150,7 +150,7 @@ void getAnalog(int pin, int id) {
   int cur = median(rawData);
 
   port->print(id);
-  port->print(F('\t'));
+  port->print('\t');
   port->print(cur);
   port->println();
   //}
@@ -235,12 +235,16 @@ void loop() {
         }
 
         if (Output > 50) {
-          Serial.print(F("Sending output "));
+          Serial.print(F("Input: "));
+          Serial.print(Input);
+          Serial.print(F(", sending output: "));
           Serial.println(Output);
           port->print(F("P"));
           port->println(Output);
         } else {
-          Serial.print(F("Output small: "));
+          Serial.print(F("Input: "));
+          Serial.print(Input);
+          Serial.print(F(", output small: "));
           Serial.println(Output);
         }
       }
