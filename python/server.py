@@ -44,6 +44,7 @@ from autobahn.wamp import WampServerFactory, WampServerProtocol, exportRpc
 
 import sqlite3
 sq3con = None
+p = None
 
 #Thermosetup
 set_min = 0
@@ -165,7 +166,6 @@ class McuProtocol(LineReceiver):
 		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd)
 		sq3cur = sq3con.cursor()
 		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?", thermoSettings)
-		#TODO: SEND TO ARDUINO
 		if self.wsMcuFactory.debugSerial:
 			print "Sending PID settings to Arduino: " + str(newPidSettemp)
 		binaryPid = pack('<fffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, set_min, set_max, referenceVoltage)
@@ -178,15 +178,18 @@ class McuProtocol(LineReceiver):
 
 	def lineReceived(self, line):
 	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
+		global p
 		if self.wsMcuFactory.debugSerial:
 			print "Serial RX:", line
 		if (line.startswith("P")):
-			print "PID detected"
 			pidLength = int(float(line[1:]))
-			p = Popen('/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200' + str(pidLength))
-			#subprocess.call("/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200")
-			#os.system('/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 ' + str(pidLength))
-			print pidLength
+			print "PID detected: " + str(pidLength / 1000) + " seconds"
+			if (p):
+				if (p.poll() == None):
+					#TODO: manage autoexit. run a php-shutdown script. then maybe count the number of failures and do a total exit after 5 or so?
+					print "ALERT. PROCESS STILL RUNNING. KILLING PROCESS"
+					p.kill()
+			p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php','192.168.4.149',str(pidLength)])
 		else:
 			try:
 				## parse data received from MCU
@@ -211,6 +214,11 @@ class McuProtocol(LineReceiver):
 
 ## Kais shutdown procedure
 def sqlite3Close():
+	global p
+	if (p):
+		#TODO: wait for process to finish. then close the process after a while if not finished and run the php stop script
+		p.terminate()
+		print "PHP Process closed"
 	sq3con.close()
 	print "Database closed successfully"
 	

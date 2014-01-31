@@ -52,7 +52,7 @@ float *referenceVoltage;
 
 //PID
 double Input, Output, Setpoint;
-byte WindowSize = 10; //in seconds = *1000
+byte WindowSize = 10; //in seconds = *1000 MUST BE LARGER THAN 2 SECONDS! (or adjust the subtraction of 2 seconds)
 unsigned long windowStartTime;
 PID myPID(&Input, &Output, &Setpoint, 0, 0, 0, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
 bool pidStarted = false;
@@ -103,7 +103,7 @@ void setup() {
   //initialize the variables we're linked to
   Setpoint = 0;
   //tell the PID to range between 0 and the full window size
-  myPID.SetOutputLimits(0, WindowSize * 1000); //- 1000 for a bit of time for the php process to return value
+  myPID.SetOutputLimits(0, (WindowSize * 1000) - 2000); //- 1000 for a bit of time for the php process to return value
   //set sample time
   myPID.SetSampleTime(1000);
   //turn the PID on
