@@ -64,3 +64,17 @@ body {
 	font-size:2em;
 	fill-opacity:.8;
 }
+
+.rightOnTemp {
+	stroke-width:1px;
+	stroke-opacity:1;
+	stroke: #f40;
+	stroke-dasharray:1,1;
+}
+
+.blurredTemp {
+	stroke-width:1px;
+	stroke-opacity:.8;
+	stroke: #f40;
+	stroke-dasharray:1,4;
+}

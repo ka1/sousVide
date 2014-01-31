@@ -35,6 +35,11 @@ function newRawDataReceived(topicUri, singleDatum) {
 	graphBrush.select("path").attr("d", line2);
 	graphBrush.select(".x.axis").call(xAxis2);
 	
+	//move settemp lines vertically
+	graphMain.select(".rightOnTemp").attr("transform","translate(0," + y(pidSetTemp) + ")");
+	graphMain.select("#blurTop").attr("transform","translate(0," + y(pidSetTemp + pidSetTempBlur) + ")");
+	graphMain.select("#blurBottom").attr("transform","translate(0," + y(pidSetTemp - pidSetTempBlur) + ")");
+	
 	currentTemperatureText.text(singleDatum.Temperatur + "°C");
 	console.log("received " + singleDatum.Temperatur + "C");
 	return;
@@ -46,10 +51,10 @@ function controlLed(status) {
 
 //this function askes for the settings and is called once in the beginning
 function askForSettings(updateGraph){
+	//should all data be retrieved and the graph be drawn with this data
 	if (updateGraph == null){
 		updateGraph = true;
 	}
-	//sess.call("rpc:getSettings").always(ab.log);
 	sess.call("rpc:getSettings").then(function (result) {
 		//receive and parse settings
 		var settings = d3.tsv.parse(result);
@@ -94,6 +99,7 @@ function askForPidSettings(){
 		document.getElementById('pid_kp').value = pid_kp;
 		document.getElementById('pid_ki').value = pid_ki;
 		document.getElementById('pid_kd').value = pid_kd;
+		pidSetTemp = pid_settemp;
 	});
 }
 
@@ -214,6 +220,8 @@ var	hoverLineX, //X-part of crosshair
 var startWindowTime = 1800, //Window width in seconds
 	temperatureMargin = 5; //temperature scope to extend beyond real scope
 
+var pidSetTemp = 0;
+
 var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
 var bisectDate = d3.bisector(function(d) { return d.Zeitpunkt; }).left;
 
@@ -246,6 +254,9 @@ var line = d3.svg.line()
 var line2 = d3.svg.line()
 	.x(function(d) { return x2(d.Zeitpunkt); })
 	.y(function(d) { return y2(d.Temperatur); });
+
+//plus minus how much is acceptable? show that in the graph
+var pidSetTempBlur = .5;
 
 //--------------------------------------------------------------------------------------------------------
 //----------------------------------------SVG CREATION START----------------------------------------------
@@ -377,6 +388,28 @@ function drawGraph(){
 			.attr("dy", ".71em")
 			.style("text-anchor", "end")
 			.text("temperature °C");
+	
+	//the set temp lines
+	graphMain.append("line")
+		.attr("class","rightOnTemp")
+		.attr("transform","translate(0," + y(pidSetTemp) + ")")
+		.attr("x1",0)
+		.attr("x2",width);
+
+	graphMain.append("line")
+		.attr("id","blurTop")
+		.attr("class","blurredTemp")
+		.attr("x1",0)
+		.attr("x2",width)
+		.attr("transform","translate(0," + y(pidSetTemp + pidSetTempBlur) + ")");
+		
+	graphMain.append("line")
+		.attr("id","blurBottom")
+		.attr("class","blurredTemp")
+		.attr("x1",0)
+		.attr("x2",width)
+		.attr("transform","translate(0," + y(pidSetTemp - pidSetTempBlur) + ")");
+	
     
     //context / brush
 	graphBrush.append("path")

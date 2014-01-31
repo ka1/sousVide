@@ -45,7 +45,8 @@ from autobahn.wamp import WampServerFactory, WampServerProtocol, exportRpc
 import sqlite3
 sq3con = None
 p = None
-pSkipped = 0
+pSkipped = 0			#how often was php not ready (in a row)
+sqliteErrorCount = 0	#how did a database error occur
 
 #Thermosetup
 set_min = 0
@@ -191,7 +192,7 @@ class McuProtocol(LineReceiver):
 
 	def lineReceived(self, line):
 	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
-		global p, pSkipped
+		global p, pSkipped, sqliteErrorCount
 		if self.wsMcuFactory.debugSerial:
 			print "Serial RX:", line
 		if (line.startswith("P")):
@@ -220,8 +221,14 @@ class McuProtocol(LineReceiver):
 			
 				rawTemp = (data[1],)
 				sq3cur = sq3con.cursor()
-				sq3cur.execute("INSERT INTO temperatures (temperature) VALUES (?)", rawTemp)
-				sq3con.commit()
+				try:
+					sq3cur.execute("INSERT INTO temperatures (temperature) VALUES (?)", rawTemp)
+					sq3con.commit()
+				except sqlite3.OperationalError, msg:
+					sqliteErrorCount += 1
+					if self.wsMcuFactory.debugSerial:
+						print "sqlite error: ", msg
+					
 
 			except ValueError:
 				log.err('Unable to parse value %s' % line)

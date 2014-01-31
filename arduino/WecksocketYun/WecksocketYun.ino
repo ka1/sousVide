@@ -234,7 +234,7 @@ void loop() {
           Serial.println(F("PID LIB ERR")); // sanity check
         }
 
-        if (Output > 50) {
+        if (Output > 100) {
           Serial.print(F("Input: "));
           Serial.print(Input);
           Serial.print(F(", sending output: "));
