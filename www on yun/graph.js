@@ -51,6 +51,10 @@ function controlLed(status) {
 	sess.call("rpc:control-led", status).always(ab.log);
 }
 
+function setAutoTune(status) {
+	sess.call("rpc:setTuning", status).always(ab.log);
+}
+
 //this function askes for the settings and is called once in the beginning
 function askForSettings(updateGraph){
 	//should all data be retrieved and the graph be drawn with this data

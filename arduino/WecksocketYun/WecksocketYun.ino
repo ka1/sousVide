@@ -17,6 +17,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <PID_v1.h>
+#include <PID_AutoTune_v0.h>
 
 const int ledPin = 13;
 int last = 0;
@@ -56,6 +57,15 @@ byte WindowSize = 10; //in seconds = *1000 MUST BE LARGER THAN 2 SECONDS! (or ad
 unsigned long windowStartTime;
 PID myPID(&Input, &Output, &Setpoint, 0, 0, 0, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
 bool pidStarted = false;
+int minOutput = 100; //ignore any outputs less than minOutput milliseconds
+
+//Autotune
+byte ATuneModeRemember = 2;
+double outputStart = 5;
+double aTuneStep = 200, aTuneNoise = 0.1, aTuneStartValue = 1000;
+unsigned int aTuneLookBack = 60;
+boolean tuning = false;
+PID_ATune aTune(&Input, &Output);
 
 //count how often the loop runs in a second
 int fps = 0;
@@ -155,6 +165,37 @@ void getAnalog(int pin, int id) {
   //}
 }
 
+
+void changeAutoTune()
+{
+ if(!tuning)
+  {
+    //Set the output to the desired starting frequency.
+    Output=aTuneStartValue;
+    aTune.SetNoiseBand(aTuneNoise);
+    aTune.SetOutputStep(aTuneStep);
+    aTune.SetLookbackSec((int)aTuneLookBack);
+    AutoTuneHelper(true);
+    tuning = true;
+    Serial.println(F("tuning started"));
+  }
+  else
+  { //cancel autotune
+    aTune.Cancel();
+    tuning = false;
+    AutoTuneHelper(false);
+    Serial.println(F("tuning stopped"));
+  }
+}
+
+void AutoTuneHelper(boolean start)
+{
+  if(start)
+    ATuneModeRemember = myPID.GetMode();
+  else
+    myPID.SetMode(ATuneModeRemember);
+}
+
 void loop() {
   //if receiving new PID values
   if (last_cmd == -1 && port->available()) {
@@ -186,7 +227,7 @@ void loop() {
 
       //safe to PID controller
       Setpoint = *pPid_settemp;
-      myPID.SetTunings(*pPid_p,*pPid_i,*pPid_d);
+      myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
       pidStarted = true;
       last_cmd = -1;
     }
@@ -202,6 +243,13 @@ void loop() {
 
       last_cmd = -1;
     }
+    else if ((last_cmd == 'A') && (port->available() >= 1)){
+      //only switch LED on and off
+      int inByte = port->read();
+      //switch tuning, if value received is different from the tuning state
+      if((inByte == '1' && !tuning) || (inByte!='1' && tuning)) changeAutoTune();
+      last_cmd = -1;
+    }
   }
 
   //send serial data once every x seconds
@@ -209,14 +257,48 @@ void loop() {
   if (millis() - lastTime > sendDelayMillis) {
     getAnalog(A0, 0);
     lastTime = millis();
-    Serial.print(F("FPS"));
-    Serial.println(fps);
 
     if (pidStarted) {
       //compute PID
       Input = calculateTemperature(median(rawData));
-      myPID.Compute();
 
+      //Autotune?
+      if (tuning)
+      {
+        byte val = (aTune.Runtime());
+        if (val != 0)
+        {
+          tuning = false;
+        }
+        if (!tuning)
+        { //we're done, set the tuning parameters
+          *pPid_p = aTune.GetKp();
+          *pPid_i = aTune.GetKi();
+          *pPid_d = aTune.GetKd();
+          Serial.println("done tuning");
+          Serial.println(*pPid_p);
+          Serial.println(*pPid_i);
+          Serial.println(*pPid_d);
+          //myPID.SetTunings(kp,ki,kd);
+          AutoTuneHelper(false);
+        }
+      }
+      else {
+        myPID.Compute();
+      }
+
+      //echo tuning parameters
+      Serial.print(F("FPS")); Serial.print(fps); Serial.print(F(" "));
+      Serial.print(F("setpoint: ")); Serial.print(Setpoint); Serial.print(F(" "));
+      Serial.print(F("input: ")); Serial.print(Input); Serial.print(F(" "));
+      Serial.print(F("output: ")); Serial.print(Output); Serial.print(F(" "));
+      if (tuning) {
+        Serial.println("tuning mode");
+      } else {
+        Serial.print("kp: "); Serial.print(myPID.GetKp()); Serial.print(" ");
+        Serial.print("ki: "); Serial.print(myPID.GetKi()); Serial.print(" ");
+        Serial.print("kd: "); Serial.print(myPID.GetKd()); Serial.println();
+      }
 
       //see if the window has passed
       if (millis() - windowStartTime > (WindowSize * 1000))
@@ -233,7 +315,7 @@ void loop() {
           Serial.println(F("PID LIB ERR")); // sanity check
         }
 
-        if (Output > 100) {
+        if (Output > minOutput) {
           Serial.print(F("Input: "));
           Serial.print(Input);
           Serial.print(F(", sending output: "));

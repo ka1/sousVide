@@ -96,6 +96,17 @@ class McuProtocol(LineReceiver):
 			print "Serial TX:", payload
 		self.transport.write("O" + payload)
 		
+	@exportRpc("setTuning")
+	def sendTuningCommand(self, doStart):
+		if doStart:
+			payload = '1'
+		else:
+			payload = '0'
+		if self.wsMcuFactory.debugSerial:
+			print "Setting tuning to:", payload
+		self.transport.write("A" + payload)
+		return True
+		
 	@exportRpc("getEntireDB")
 	def readTemperatureDB(self, numberTotal):
 		if self.wsMcuFactory.debugSerial:
