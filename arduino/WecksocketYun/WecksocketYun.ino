@@ -50,6 +50,10 @@ float *pPid_d;
 float *range_min;
 float *range_max;
 float *referenceVoltage;
+float *aTuneStep;
+float *aTuneNoise;
+float *aTuneStartValue;
+float *aTuneLookBack;
 
 //PID
 double Input, Output, Setpoint;
@@ -61,9 +65,9 @@ int minOutput = 100; //ignore any outputs less than minOutput milliseconds
 
 //Autotune
 byte ATuneModeRemember = 2;
-double outputStart = 5;
-double aTuneStep = 200, aTuneNoise = 0.1, aTuneStartValue = 1000;
-unsigned int aTuneLookBack = 60;
+//double aTuneStep = 200, aTuneNoise = 0.1, aTuneStartValue = 1000;
+//unsigned int aTuneLookBack = 60;
+
 boolean tuning = false;
 PID_ATune aTune(&Input, &Output);
 
@@ -99,6 +103,10 @@ void setup() {
   range_min = (float *)(pPidData + 16);
   range_max = (float *)(pPidData + 20);
   referenceVoltage = (float *)(pPidData + 24);
+  aTuneStep = (float *)(pPidData + 28);
+  aTuneNoise = (float *)(pPidData + 32);
+  aTuneStartValue = (float *)(pPidData + 36);
+  aTuneLookBack = (float *)(pPidData + 40);
 
   //PID
   windowStartTime = millis();
@@ -171,10 +179,10 @@ void changeAutoTune()
  if(!tuning)
   {
     //Set the output to the desired starting frequency.
-    Output=aTuneStartValue;
-    aTune.SetNoiseBand(aTuneNoise);
-    aTune.SetOutputStep(aTuneStep);
-    aTune.SetLookbackSec((int)aTuneLookBack);
+    Output=*aTuneStartValue;
+    aTune.SetNoiseBand(*aTuneNoise);
+    aTune.SetOutputStep(*aTuneStep);
+    aTune.SetLookbackSec((int)*aTuneLookBack);
     AutoTuneHelper(true);
     tuning = true;
     Serial.println(F("tuning started"));
@@ -206,28 +214,30 @@ void loop() {
   //Compute commands
   if (last_cmd != -1)
   {
-    if ((last_cmd == 'P') && (port->available() >= 16))
+    if ((last_cmd == 'P') && (port->available() >= 44))
     {
-      port->readBytes((char *)pPidData, 28);
+      port->readBytes((char *)pPidData, 44);
 
-      Serial.print(F("Received new PID values: Setpoint "));
-      Serial.print(*pPid_settemp);
-      Serial.print(F("C - P"));
-      Serial.print(*pPid_p);
-      Serial.print(F(" - I"));
-      Serial.print(*pPid_i);
-      Serial.print(F(" - D"));
-      Serial.println(*pPid_d);
-      Serial.print(F("Received new Thermo values: MIN "));
-      Serial.print(*range_min);
-      Serial.print(F(" - MAX "));
-      Serial.print(*range_max);
-      Serial.print(F(" - REFVOLT "));
-      Serial.println(*referenceVoltage);
+      Serial.print(F("Received new PID values: Setpoint ")); Serial.print(*pPid_settemp);
+      Serial.print(F("C - P")); Serial.print(*pPid_p);
+      Serial.print(F(" - I"));  Serial.print(*pPid_i);
+      Serial.print(F(" - D"));  Serial.println(*pPid_d);
+      Serial.print(F("Received new Thermo values: MIN ")); Serial.print(*range_min);
+      Serial.print(F(" - MAX "));  Serial.print(*range_max);
+      Serial.print(F(" - REFVOLT ")); Serial.println(*referenceVoltage);
+      Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
+      Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
+      Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
+      Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
 
       //safe to PID controller
       Setpoint = *pPid_settemp;
       myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+      if (tuning) {
+        Serial.println(F("Tuning parameters reset. Restarting tuning."));
+        changeAutoTune(); //first call will cancel the tuning
+        changeAutoTune(); //second call with set the values and start again
+      }
       pidStarted = true;
       last_cmd = -1;
     }
@@ -330,6 +340,9 @@ void loop() {
         }
       }
 
+    }
+    else {
+      Serial.print(F("FPS")); Serial.println(fps);
     }
     fps = 0;
   }

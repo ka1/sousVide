@@ -26,6 +26,10 @@
 <p><label>PID kp </label><input type="number" value="" id="pid_kp" min="0" max="20000" step="0.01" /></p>
 <p><label>PID ki </label><input type="number" value="" id="pid_ki" min="0" max="200" step="0.01" /></p>
 <p><label>PID kd </label><input type="number" value="" id="pid_kd" min="0" max="200" step="0.01" /></p>
+<p><label>PID aTuneStep </label><input type="number" value="" id="aTuneStep" min="0" max="1000" step="1" /></p>
+<p><label>PID aTuneNoise </label><input type="number" value="" id="aTuneNoise" min="0" max="10" step=".05" /></p>
+<p><label>PID aTuneStartValue </label><input type="number" value="" id="aTuneStartValue" min="0" max="8000" step="1" /></p>
+<p><label>PID aTuneLookBack </label><input type="number" value="" id="aTuneLookBack" min="0" max="3600" step="1" /></p>
 </form>
 <button onclick='sendPIDSettings()'>Send new settings</button>
 

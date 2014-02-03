@@ -94,17 +94,26 @@ function askForPidSettings(){
 	sess.call("rpc:getPidSettings").then(function (result) {
 		//receive and parse settings
 		var settings = d3.tsv.parse(result);
+		console.log(settings);
 		wemoIp = settings[0].wemoIp;
 		pid_settemp = parseFloat(settings[0].pid_settemp);
 		pid_kp = parseFloat(settings[0].pid_kp);
 		pid_ki = parseFloat(settings[0].pid_ki);
 		pid_kd = parseFloat(settings[0].pid_kd);
+		aTuneStep = parseFloat(settings[0].aTuneStep);
+		aTuneNoise = parseFloat(settings[0].aTuneNoise);
+		aTuneStartValue = parseFloat(settings[0].aTuneStartValue);
+		aTuneLookBack = parseFloat(settings[0].aTuneLookBack);
 		
 		document.getElementById('wemoIp').value = wemoIp;
 		document.getElementById('pid_settemp').value = pid_settemp;
 		document.getElementById('pid_kp').value = pid_kp;
 		document.getElementById('pid_ki').value = pid_ki;
 		document.getElementById('pid_kd').value = pid_kd;
+		document.getElementById('aTuneStep').value = aTuneStep;
+		document.getElementById('aTuneNoise').value = aTuneNoise;
+		document.getElementById('aTuneStartValue').value = aTuneStartValue;
+		document.getElementById('aTuneLookBack').value = aTuneLookBack;
 		pidSetTemp = pid_settemp;
 		
 	});
@@ -126,9 +135,13 @@ function sendPIDSettings(){
 	sendPid_kp = document.getElementById('pid_kp').value;
 	sendPid_ki = document.getElementById('pid_ki').value;
 	sendPid_kd = document.getElementById('pid_kd').value;
+	sendATuneStep = document.getElementById('aTuneStep').value;
+	sendATuneNoise = document.getElementById('aTuneNoise').value;
+	sendATuneStartValue = document.getElementById('aTuneStartValue').value;
+	sendATuneLookBack = document.getElementById('aTuneLookBack').value;
 
 	//send these values
-	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd).then(
+	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd, sendATuneStep, sendATuneNoise, sendATuneStartValue, sendATuneLookBack).then(
 		function (result) {
 			//safe the values
 			pidSetTemp = parseFloat(sendPid_settemp);

@@ -57,6 +57,10 @@ pid_i = 0
 pid_d = 0
 pid_settemp = 0
 wemoIp = ""
+aTuneStep = 0
+aTuneNoise = 0
+aTuneStartValue = 0
+aTuneLookBack = 0
 
 class Serial2WsOptions(usage.Options):
 	
@@ -138,8 +142,8 @@ class McuProtocol(LineReceiver):
 	def readPidSettings(self):
 		if self.wsMcuFactory.debugSerial:
 			print "sending runtime PID settings"
-		pidsetupTsv = "wemoIp\tpid_settemp\tpid_kp\tpid_ki\tpid_kd\n"
-		pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\n".format(wemoIp, pid_settemp, pid_p, pid_i, pid_d))
+		pidsetupTsv = "wemoIp\tpid_settemp\tpid_kp\tpid_ki\tpid_kd\taTuneStep\taTuneNoise\taTuneStartValue\taTuneLookBack\n"
+		pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\n".format(wemoIp, pid_settemp, pid_p, pid_i, pid_d, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack))
 		return pidsetupTsv
 
 	##Updates the settings in the database and resets the database
@@ -165,14 +169,18 @@ class McuProtocol(LineReceiver):
 		return True
 
 	@exportRpc("newPIDSettings")
-	def writePIDSettings(self, newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd):
-		global pid_p, pid_i, pid_d, pid_settemp, wemoIp
+	def writePIDSettings(self, newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack):
+		global pid_p, pid_i, pid_d, pid_settemp, wemoIp, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack
 		#Parse floats
 		newWemoIP = newWemoIP
 		newPidSettemp = float(newPidSettemp)
 		newPID_kp = float(newPID_kp)
 		newPID_ki = float(newPID_ki)
 		newPID_kd = float(newPID_kd)
+		newATuneStep = float(newATuneStep)
+		newATuneNoise = float(newATuneNoise)
+		newATuneStartValue = float(newATuneStartValue)
+		newATuneLookBack = float(newATuneLookBack)
 		#Validate
 		if (newPidSettemp > 80 or newPidSettemp < 0):
 			raise Exception("Set Temperature must be between 0 C and 80 C")
@@ -182,12 +190,12 @@ class McuProtocol(LineReceiver):
 			raise Exception("PID - I must be between 0 and 200")
 		if (newPID_kd > 200 or newPID_kd < 0):
 			raise Exception("PID - D must be between 0 and 200")
-		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd)
+		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
 		sq3cur = sq3con.cursor()
-		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?", thermoSettings)
+		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?, aTuneStep = ?, aTuneNoise = ?, aTuneStartValue = ?, aTuneLookBack = ?", thermoSettings)
 		if self.wsMcuFactory.debugSerial:
 			print "Sending PID and THERMO settings to Arduino: " + str(newPidSettemp)
-		binaryPid = pack('<fffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, set_min, set_max, referenceVoltage)
+		binaryPid = pack('<fffffffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, set_min, set_max, referenceVoltage, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
 		self.transport.write("P" + binaryPid)
 		#safe PID settings for runtime
 		pid_p = newPID_kp
@@ -195,6 +203,10 @@ class McuProtocol(LineReceiver):
 		pid_d = newPID_kd
 		pid_settemp = newPidSettemp
 		wemoIp = newWemoIP
+		aTuneStep = newATuneStep
+		aTuneNoise = newATuneNoise
+		aTuneStartValue = newATuneStartValue
+		aTuneLookBack = newATuneLookBack
 		return True
 
 	def connectionMade(self):
@@ -258,12 +270,13 @@ def sqlite3Close():
 	sq3con.close()
 	print "Database closed successfully"
 	
-##Loads the thermometer settings from database for the runtime
+## Loads the thermometer settings from database for the runtime
 def loadThermoSettings():
 	global set_min, set_max, referenceVoltage
 	global pid_p, pid_i, pid_d, pid_settemp, wemoIp
+	global aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack
 	sq3cur = sq3con.cursor()
-	sq3cur.execute("SELECT set_min,set_max,referenceVoltage,pid_kp,pid_ki,pid_kd,wemo_temp_max,wemo_ip FROM `thermosetup`")
+	sq3cur.execute("SELECT set_min,set_max,referenceVoltage,pid_kp,pid_ki,pid_kd,wemo_temp_max,wemo_ip,aTuneStep,aTuneNoise,aTuneStartValue,aTuneLookBack FROM `thermosetup`")
 	thermosetup = sq3cur.fetchone()
 	set_min = float(thermosetup[0])
 	set_max = float(thermosetup[1])
@@ -273,7 +286,12 @@ def loadThermoSettings():
 	pid_d = float(thermosetup[5])
 	pid_settemp = float(thermosetup[6])
 	wemoIp = thermosetup[7]
-	print "Settings read from database for runtime: eg. REFVOLT=" + str(referenceVoltage) + " and " + str(wemoIp)
+	aTuneStep = thermosetup[8]
+	aTuneNoise = thermosetup[9]
+	aTuneStartValue = thermosetup[10]
+	aTuneLookBack = thermosetup[11]
+	
+	print "Settings read from database for runtime: eg. REFVOLT=" + str(referenceVoltage) + " and " + str(wemoIp) + " and " + str(aTuneStartValue)
 
 ## WS-MCU protocol
 ##
