@@ -7,6 +7,11 @@ var wsuri = "ws://" + window.location.hostname + ":9000";
 var thermoRefVoltage, thermoRangeMax, thermoRangeMin;
 var pidSetTemp = 0;
 
+function autoTuneDataReceived(topicUri, aTuneData) {
+	console.log(aTuneData);
+	alert("Autotune Data received: \nP: " + aTuneData.p + "\nI: " + aTuneData.i + "\nD: " + aTuneData.d);
+}
+
 //function receives WS new data event and draws the single datum
 function newRawDataReceived(topicUri, singleDatum) {
 	singleDatum.Zeitpunkt = parseDate(singleDatum.Zeitpunkt);
@@ -200,7 +205,7 @@ function sendThermoSettings(){
 			graphData.length = 0;
 			console.log('Successfully reset graph with new settings');
 		}, function (error) {
-			alert("Server did not accept values. Resetting values");
+			alert("Server did not accept values. Resetting values.\nMessage: " + error.desc);
 			console.log('Error resettings graph or sending settings');
 			console.log(error);
 			//receive (old) settings
@@ -222,6 +227,7 @@ window.onload = function () {
 	
 	      sess.prefix("event", "http://raumgeist.dyndns.org/thermo#");
 	      sess.subscribe("event:rawValue", newRawDataReceived);
+	      sess.subscribe("event:autoTuneReady", autoTuneDataReceived);
 	
 	      sess.prefix("rpc", "http://raumgeist.dyndns.org/thermoControl#");
 	

@@ -80,7 +80,7 @@ void setup() {
 
   port = &Serial1; // Arduino Yun
   //Wait! Otherwise, at startup, the connection to the python script will not be established
-  while (!Serial1);
+  while (!port);
 
   //EXTERNAL AREF Voltage should be 1.134V
   analogReference(EXTERNAL);
@@ -170,16 +170,15 @@ void getAnalog(int pin, int id) {
   port->print('\t');
   port->print(cur);
   port->println();
-  //}
 }
 
 
 void changeAutoTune()
 {
- if(!tuning)
+  if (!tuning)
   {
     //Set the output to the desired starting frequency.
-    Output=*aTuneStartValue;
+    Output = *aTuneStartValue;
     aTune.SetNoiseBand(*aTuneNoise);
     aTune.SetOutputStep(*aTuneStep);
     aTune.SetLookbackSec((int)*aTuneLookBack);
@@ -198,7 +197,7 @@ void changeAutoTune()
 
 void AutoTuneHelper(boolean start)
 {
-  if(start)
+  if (start)
     ATuneModeRemember = myPID.GetMode();
   else
     myPID.SetMode(ATuneModeRemember);
@@ -210,7 +209,7 @@ void loop() {
     //read command
     last_cmd = port->read();
   }
-
+  
   //Compute commands
   if (last_cmd != -1)
   {
@@ -253,11 +252,11 @@ void loop() {
 
       last_cmd = -1;
     }
-    else if ((last_cmd == 'A') && (port->available() >= 1)){
+    else if ((last_cmd == 'A') && (port->available() >= 1)) {
       //only switch LED on and off
       int inByte = port->read();
       //switch tuning, if value received is different from the tuning state
-      if((inByte == '1' && !tuning) || (inByte!='1' && tuning)) changeAutoTune();
+      if ((inByte == '1' && !tuning) || (inByte != '1' && tuning)) changeAutoTune();
       last_cmd = -1;
     }
   }
@@ -285,12 +284,19 @@ void loop() {
           *pPid_p = aTune.GetKp();
           *pPid_i = aTune.GetKi();
           *pPid_d = aTune.GetKd();
-          Serial.println("done tuning");
+          Serial.println(F("Done tuning. Using new settings"));
           Serial.println(*pPid_p);
           Serial.println(*pPid_i);
           Serial.println(*pPid_d);
-          //myPID.SetTunings(kp,ki,kd);
+          myPID.SetTunings(*pPid_p,*pPid_i,*pPid_d);
           AutoTuneHelper(false);
+          //Sending values to python
+          port->print(F("A"));
+          port->print(*pPid_p);
+          port->print('\t');
+          port->print(*pPid_i);
+          port->print('\t');
+          port->println(*pPid_d);
         }
       }
       else {
@@ -305,9 +311,12 @@ void loop() {
       if (tuning) {
         Serial.println("tuning mode");
       } else {
-        Serial.print("kp: "); Serial.print(myPID.GetKp()); Serial.print(" ");
-        Serial.print("ki: "); Serial.print(myPID.GetKi()); Serial.print(" ");
-        Serial.print("kd: "); Serial.print(myPID.GetKd()); Serial.println();
+        Serial.print(F("kp: ")); Serial.print(myPID.GetKp()); Serial.print(F(" "));
+        Serial.print(F("ki: ")); Serial.print(myPID.GetKi()); Serial.print(F(" "));
+        Serial.print(F("kd: ")); Serial.print(myPID.GetKd()); Serial.print(F(" ||| "));
+        Serial.print(F("akp: ")); Serial.print(aTune.GetKp()); Serial.print(F(" "));
+        Serial.print(F("aki: ")); Serial.print(aTune.GetKi()); Serial.print(F(" "));
+        Serial.print(F("akd: ")); Serial.println(aTune.GetKd());
       }
 
       //see if the window has passed
@@ -331,7 +340,7 @@ void loop() {
           Serial.print(F(", sending output: "));
           Serial.println(Output);
           port->print(F("P"));
-          port->println(Output);
+          port->println(Output);          
         } else {
           Serial.print(F("Input: "));
           Serial.print(Input);

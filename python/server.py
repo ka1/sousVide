@@ -157,6 +157,11 @@ class McuProtocol(LineReceiver):
 			raise Exception("Temperature range end over limit of 1372 or below -100")
 		if (newTempStart > 1372 or newTempStart < -100):
 			raise Exception("Temperature range start over limit of 1372 or below -100")
+		if (newRefVolt > 5):
+			raise Exception("Reference voltage must not be above 5V")
+		#check if the settings have changed
+		if (newTempEnd == set_max and newTempStart == set_min and newRefVolt == referenceVoltage):
+			raise Exception("Settings where not changed (values where as before)")
 		thermoSettings = (newTempStart, newTempEnd, newRefVolt)
 		sq3cur = sq3con.cursor()
 		sq3cur.execute("UPDATE thermosetup SET set_min = ?, set_max = ?, referenceVoltage = ?", thermoSettings)
@@ -166,6 +171,11 @@ class McuProtocol(LineReceiver):
 		referenceVoltage = newRefVolt
 		set_min = newTempStart
 		set_max = newTempEnd
+		#also send these values to the arduino, since the PID will only be possible with the right temperature
+		if self.wsMcuFactory.debugSerial:
+			print "Sending PID and THERMO settings to Arduino: " + str(newPidSettemp)
+		binaryPid = pack('<fffffffffff', pid_settemp, pid_p, pid_i, pid_d, set_min, set_max, referenceVoltage, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack)
+		self.transport.write("P" + binaryPid)
 		return True
 
 	@exportRpc("newPIDSettings")
@@ -228,6 +238,14 @@ class McuProtocol(LineReceiver):
 			else:
 				p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
 				pSkipped = 0
+		elif (line.startswith("A")):
+			try:
+				autoTuneString = str(line[1:])
+				autoTuneData = [float(x) for x in autoTuneString.split()]
+				autoTuneJson = {'p': autoTuneData[0], 'i': autoTuneData[1], 'd': autoTuneData[2]}
+				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#autoTuneReady", autoTuneJson)
+			except ValueError:
+				log.err('Unable to parse value %s' % line)
 		else:
 			try:
 				## parse data received from MCU
@@ -251,8 +269,6 @@ class McuProtocol(LineReceiver):
 					sqliteErrorCount += 1
 					if self.wsMcuFactory.debugSerial:
 						print "sqlite error: ", msg
-					
-
 			except ValueError:
 				log.err('Unable to parse value %s' % line)
 
