@@ -173,7 +173,7 @@ class McuProtocol(LineReceiver):
 		set_max = newTempEnd
 		#also send these values to the arduino, since the PID will only be possible with the right temperature
 		if self.wsMcuFactory.debugSerial:
-			print "Sending PID and THERMO settings to Arduino: " + str(newPidSettemp)
+			print "Sending PID and THERMO settings to Arduino: " + str(newTempEnd)
 		binaryPid = pack('<fffffffffff', pid_settemp, pid_p, pid_i, pid_d, set_min, set_max, referenceVoltage, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack)
 		self.transport.write("P" + binaryPid)
 		return True
