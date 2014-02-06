@@ -262,6 +262,16 @@ void loop() {
       if ((inByte == '1' && !tuning) || (inByte != '1' && tuning)) changeAutoTune();
       last_cmd = -1;
     }
+    else if (last_cmd == 'R') {
+      Serial.println("RESETTING PID");
+      //Reset PID Controler
+      Setpoint = *pPid_settemp;
+      myPID.SetMode(MANUAL);
+      myPID.SetMode(AUTOMATIC);
+
+      myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+      last_cmd = -1;
+    }
   }
 
   //send serial data once every x seconds

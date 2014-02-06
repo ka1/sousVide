@@ -111,6 +111,12 @@ class McuProtocol(LineReceiver):
 		self.transport.write("A" + payload)
 		return True
 		
+	@exportRpc("resetPid")
+	def sendResetPidSignal(self):
+		if self.wsMcuFactory.debugSerial:
+			print "Sending reset signal to arduino"
+		self.transport.write("R")
+		
 	@exportRpc("getEntireDB")
 	def readTemperatureDB(self, numberTotal):
 		if self.wsMcuFactory.debugSerial:

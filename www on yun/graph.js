@@ -7,6 +7,11 @@ var wsuri = "ws://" + window.location.hostname + ":9000";
 var thermoRefVoltage, thermoRangeMax, thermoRangeMin;
 var pidSetTemp = 0;
 
+function resetPid(){
+	console.log("sending reset signal");
+	sess.call("rpc:resetPid").always(ab.log);
+}
+
 function autoTuneDataReceived(topicUri, aTuneData) {
 	console.log(aTuneData);
 	alert("Autotune Data received: \nP: " + aTuneData.p + "\nI: " + aTuneData.i + "\nD: " + aTuneData.d);
@@ -99,7 +104,6 @@ function askForPidSettings(){
 	sess.call("rpc:getPidSettings").then(function (result) {
 		//receive and parse settings
 		var settings = d3.tsv.parse(result);
-		console.log(settings);
 		wemoIp = settings[0].wemoIp;
 		pid_settemp = parseFloat(settings[0].pid_settemp);
 		pid_kp = parseFloat(settings[0].pid_kp);
