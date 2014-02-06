@@ -118,6 +118,9 @@ void setup() {
   myPID.SetSampleTime(1000);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
+  
+  //Autotune
+  aTune.SetControlType(1); //1=PID, 0=PI
 
   digitalWrite(ledPin, LOW);
 }

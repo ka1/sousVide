@@ -194,12 +194,12 @@ class McuProtocol(LineReceiver):
 		#Validate
 		if (newPidSettemp > 80 or newPidSettemp < 0):
 			raise Exception("Set Temperature must be between 0 C and 80 C")
-		if (newPID_kp > 20000 or newPID_kp < 0):
-			raise Exception("PID - P must be between 0 and 20000")
-		if (newPID_ki > 200 or newPID_ki < 0):
-			raise Exception("PID - I must be between 0 and 200")
-		if (newPID_kd > 200 or newPID_kd < 0):
-			raise Exception("PID - D must be between 0 and 200")
+		if (newPID_kp > 1000000 or newPID_kp < 0):
+			raise Exception("PID - P must be between 0 and 1000000")
+		if (newPID_ki > 1000000 or newPID_ki < 0):
+			raise Exception("PID - I must be between 0 and 1000000")
+		if (newPID_kd > 1000000 or newPID_kd < 0):
+			raise Exception("PID - D must be between 0 and 1000000")
 		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
 		sq3cur = sq3con.cursor()
 		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?, aTuneStep = ?, aTuneNoise = ?, aTuneStartValue = ?, aTuneLookBack = ?", thermoSettings)
