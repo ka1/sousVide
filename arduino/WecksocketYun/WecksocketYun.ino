@@ -115,10 +115,10 @@ void setup() {
   //tell the PID to range between 0 and the full window size
   myPID.SetOutputLimits(0, (WindowSize * 1000) - 2000); //- 1000 for a bit of time for the php process to return value
   //set sample time
-  myPID.SetSampleTime(1000);
+  myPID.SetSampleTime(WindowSize * 1000);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
-  
+
   //Autotune
   aTune.SetControlType(1); //1=PID, 0=PI
 
@@ -212,7 +212,7 @@ void loop() {
     //read command
     last_cmd = port->read();
   }
-  
+
   //Compute commands
   if (last_cmd != -1)
   {
@@ -266,73 +266,22 @@ void loop() {
       Serial.println("RESETTING PID");
       //Reset PID Controler
       Setpoint = *pPid_settemp;
-      myPID.SetMode(MANUAL);
-      myPID.SetMode(AUTOMATIC);
 
-      myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+      myPID.ResetIterm();
       last_cmd = -1;
     }
   }
 
   //send serial data once every x seconds
-  //also compute PID
+  //also compute PID and Autotune
   if (millis() - lastTime > sendDelayMillis) {
-    getAnalog(A0, 0);
     lastTime = millis();
 
+    //send temperature value
+    getAnalog(A0, 0);
+
     if (pidStarted) {
-      //compute PID
-      Input = calculateTemperature(median(rawData));
-
-      //Autotune?
-      if (tuning)
-      {
-        byte val = (aTune.Runtime());
-        if (val != 0)
-        {
-          tuning = false;
-        }
-        if (!tuning)
-        { //we're done, set the tuning parameters
-          *pPid_p = aTune.GetKp();
-          *pPid_i = aTune.GetKi();
-          *pPid_d = aTune.GetKd();
-          Serial.println(F("Done tuning. Using new settings"));
-          Serial.println(*pPid_p);
-          Serial.println(*pPid_i);
-          Serial.println(*pPid_d);
-          myPID.SetTunings(*pPid_p,*pPid_i,*pPid_d);
-          AutoTuneHelper(false);
-          //Sending values to python
-          port->print(F("A"));
-          port->print(*pPid_p);
-          port->print('\t');
-          port->print(*pPid_i);
-          port->print('\t');
-          port->println(*pPid_d);
-        }
-      }
-      else {
-        myPID.Compute();
-      }
-
-      //echo tuning parameters
-      Serial.print(F("FPS")); Serial.print(fps); Serial.print(F(" "));
-      Serial.print(F("setpoint: ")); Serial.print(Setpoint); Serial.print(F(" "));
-      Serial.print(F("input: ")); Serial.print(Input); Serial.print(F(" "));
-      Serial.print(F("output: ")); Serial.print(Output); Serial.print(F(" "));
-      if (tuning) {
-        Serial.println("tuning mode");
-      } else {
-        Serial.print(F("kp: ")); Serial.print(myPID.GetKp()); Serial.print(F(" "));
-        Serial.print(F("ki: ")); Serial.print(myPID.GetKi()); Serial.print(F(" "));
-        Serial.print(F("kd: ")); Serial.print(myPID.GetKd()); Serial.print(F(" ||| "));
-        Serial.print(F("akp: ")); Serial.print(aTune.GetKp()); Serial.print(F(" "));
-        Serial.print(F("aki: ")); Serial.print(aTune.GetKi()); Serial.print(F(" "));
-        Serial.print(F("akd: ")); Serial.println(aTune.GetKd());
-      }
-
-      //see if the window has passed
+      //see if the window has passed. only then, compute pid or autotune
       if (millis() - windowStartTime > (WindowSize * 1000))
       { //time to shift the Relay Window
         windowStartTime += (WindowSize * 1000);
@@ -343,22 +292,70 @@ void loop() {
           windowStartTime = millis();
         }
 
+        // -------- PID AND AUTOTUNE --------
+        Input = calculateTemperature(median(rawData));
+
+        // ------------ AUTOTUNE ------------
+        if (tuning)
+        {
+          byte val = (aTune.Runtime());
+          if (val != 0)
+          {
+            tuning = false;
+          }
+          if (!tuning)
+          { //we're done, set the tuning parameters
+            *pPid_p = aTune.GetKp();
+            *pPid_i = aTune.GetKi();
+            *pPid_d = aTune.GetKd();
+            Serial.println(F("Done tuning. Using new settings"));
+            Serial.println(*pPid_p);
+            Serial.println(*pPid_i);
+            Serial.println(*pPid_d);
+            myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+            AutoTuneHelper(false);
+            //Sending values to python
+            port->print(F("A"));
+            port->print(*pPid_p);
+            port->print('\t');
+            port->print(*pPid_i);
+            port->print('\t');
+            port->println(*pPid_d);
+          }
+        }
+        // -------------- PID --------------
+        else {
+          myPID.Compute();
+        }
+
+        //echo tuning parameters
+        Serial.print(F("FPS")); Serial.print(fps); Serial.print(F(" "));
+        Serial.print(F("setpoint: ")); Serial.print(Setpoint); Serial.print(F(" "));
+        Serial.print(F("input: ")); Serial.print(Input); Serial.print(F(" "));
+        Serial.print(F("output: ")); Serial.print(Output); Serial.print(F(" "));
+        if (tuning) {
+          Serial.println("tuning mode");
+        } else {
+          Serial.print(F("kp: ")); Serial.print(myPID.GetKp()); Serial.print(F(" "));
+          Serial.print(F("ki: ")); Serial.print(myPID.GetKi()); Serial.print(F(" "));
+          Serial.print(F("kd: ")); Serial.print(myPID.GetKd()); Serial.print(F(" ||| "));
+          Serial.print(F("iterm: ")); Serial.print(myPID.GetIterm()); Serial.print(F(" "));
+          Serial.print(F("dfactor: ")); Serial.print(myPID.GetLastDFactor()); Serial.print(F(" "));
+          //        Serial.print(F("akp: ")); Serial.print(aTune.GetKp()); Serial.print(F(" "));
+          //        Serial.print(F("aki: ")); Serial.print(aTune.GetKi()); Serial.print(F(" "));
+          //        Serial.print(F("akd: ")); Serial.print(aTune.GetKd()); Serial.print(F(" "));
+        }
+
         if (Output > (WindowSize * 1000)) {
           Serial.println(F("PID LIB ERR")); // sanity check
         }
 
         if (Output > minOutput) {
-          Serial.print(F("Input: "));
-          Serial.print(Input);
-          Serial.print(F(", sending output: "));
-          Serial.println(Output);
+          Serial.println(F(", sending signal "));
           port->print(F("P"));
-          port->println(Output);          
+          port->println(Output);
         } else {
-          Serial.print(F("Input: "));
-          Serial.print(Input);
-          Serial.print(F(", output small: "));
-          Serial.println(Output);
+          Serial.println(F(", output too small "));
         }
       }
 
