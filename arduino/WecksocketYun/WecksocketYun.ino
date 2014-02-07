@@ -339,6 +339,7 @@ void loop() {
           Serial.print(F("kp: ")); Serial.print(myPID.GetKp()); Serial.print(F(" "));
           Serial.print(F("ki: ")); Serial.print(myPID.GetKi()); Serial.print(F(" "));
           Serial.print(F("kd: ")); Serial.print(myPID.GetKd()); Serial.print(F(" ||| "));
+          Serial.print(F("pfactor: ")); Serial.print(myPID.GetLastPFactor()); Serial.print(F(" "));
           Serial.print(F("iterm: ")); Serial.print(myPID.GetIterm()); Serial.print(F(" "));
           Serial.print(F("dfactor: ")); Serial.print(myPID.GetLastDFactor()); Serial.print(F(" "));
           //        Serial.print(F("akp: ")); Serial.print(aTune.GetKp()); Serial.print(F(" "));

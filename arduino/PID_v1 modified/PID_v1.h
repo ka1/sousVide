@@ -53,6 +53,7 @@ class PID
     double GetIterm();
     void ResetIterm();
     double GetLastDFactor();
+    double GetLastPFactor();
 
   private:
 	void Initialize();
@@ -80,6 +81,7 @@ class PID
 	bool inAuto;
 	
 	double lastDFactor;
+	double lastPFactor;
 };
 #endif
 

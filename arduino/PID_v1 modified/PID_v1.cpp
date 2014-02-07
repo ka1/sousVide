@@ -59,8 +59,9 @@ bool PID::Compute()
       else if(ITerm < outMin) ITerm= outMin;
       double dInput = (input - lastInput);
       
-      /*Safe last dInput including multiplicator for debugging*/
+      /*Safe last dInput and pFactor including multiplicator for debugging*/
       lastDFactor = kd * dInput;
+      lastPFactor = kp * error;
  
       /*Compute PID Output*/
       double output = kp * error + ITerm- kd * dInput;
@@ -198,3 +199,4 @@ int PID::GetDirection(){ return controllerDirection;}
 double PID::GetIterm(){ return ITerm; }
 void PID::ResetIterm() { ITerm = 0; return; }
 double PID::GetLastDFactor() { return lastDFactor; }
+double PID::GetLastPFactor() { return lastPFactor; }
