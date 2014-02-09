@@ -25,7 +25,7 @@ int last = 0;
 HardwareSerial *port;
 
 unsigned long lastTime;
-int sendDelayMillis = 1000;
+int sendDelayMillis = 1000; //how often to send a temperature value. be careful to change that, as a lot is depending on this timing
 
 //thermo settings for later
 float reference_voltage;
@@ -41,8 +41,9 @@ byte rawDataIdx = 0;
 int currentTemperature1023;
 #define LASTANALYSISSIZE 60
 int lastTemperatures[LASTANALYSISSIZE];
-int temperatureAnalysisDelay;
+int sendCounter = 0; //for the analysisDelay to run every N sends
 int lastTemperaturesSize = 0;
+int analysisDelay;
 
 //last serial command
 int last_cmd = -1;
@@ -309,10 +310,16 @@ void loop() {
   
         //safe to PID controller
         Setpoint = *pPid_settemp;
-        myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+        //set tuning, depending on which parameter set we are running
+        if (pidNear == true){
+              myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
+        } else {
+          myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+        }
         pidStarted = true;
         pidSettingsReceived = true;
-        temperatureAnalysisDelay = *pPid_nearfartimewindow;
+        //calculate how long the delay has to be in order to cover the set time window
+        analysisDelay = *pPid_nearfartimewindow * (1000 / sendDelayMillis);
         last_cmd = -1;
       }
     }
@@ -358,7 +365,7 @@ void loop() {
       }
     }
     else if (last_cmd == 'R') {
-      Serial.println("RESETTING PID");
+      Serial.println(F("RESETTING PID"));
       //Reset PID Controler
       Setpoint = *pPid_settemp;
 
@@ -392,19 +399,23 @@ void loop() {
 
   //send serial data once every x seconds
   //also compute PID and Autotune
-  if (millis() - lastTime > sendDelayMillis) {
+  if (millis() - lastTime >= sendDelayMillis) {
+    sendCounter++;
     lastTime = millis();
-
+    
     //send temperature value
     getAnalog(A0, 0);
     
-    //analyse last temperatures
-    //move all values to 1 above, so that we can save to the 0 value
-    for(int i = LASTANALYSISSIZE - 1; i>=0; i--){
-      lastTemperatures[i+1] = lastTemperatures[i];
+    //analyse last temperatures every N runs (depending on near/far analysis window size)
+    if (sendCounter % analysisDelay == 0) {
+      //move all values to 1 above, so that we can save to the 0 value
+      for(int i = LASTANALYSISSIZE - 1; i>=0; i--){
+        lastTemperatures[i+1] = lastTemperatures[i];
+      }
+      lastTemperatures[0] = currentTemperature1023;
+      lastTemperaturesSize++;
+      sendCounter = 0; //reset counter
     }
-    lastTemperatures[0] = currentTemperature1023;
-    lastTemperaturesSize++;
 
     if (pidStarted) {
       //see if the window has passed. only then, compute pid or autotune
@@ -432,7 +443,7 @@ void loop() {
             //or if the minimum value was larger than now - deltaT
             //ie. was the temperature always within the deltaT, relative to now
             if (theMax < (theAverage + *pPid_nearfardelta) || theMin > (theAverage - *pPid_nearfardelta)) {
-              Serial.println("CHANGING TO NEAR PARAMETER SET");
+              Serial.println(F("CHANGING TO NEAR PARAMETER SET"));
               pidNear = true;
               myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
               resetLastTemperaturesArray();
@@ -442,7 +453,7 @@ void loop() {
           else {
             //emergency fallback: go to far parameter set, if we are more than 0.6C above settemp
             if (Input >= Setpoint + 0.6) {
-              Serial.println("EMERGENCY CHANGING TO FAR PARAMETER SET BECAUSE TOO HIGH. SET ITERM TO 0");
+              Serial.println(F("EMERGENCY CHANGING TO FAR PARAMETER SET BECAUSE TOO HIGH. SET ITERM TO 0"));
               pidNear = false;
               myPID.ResetIterm();
               myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
@@ -505,7 +516,7 @@ void loop() {
         Serial.print(F("input: ")); Serial.print(Input); Serial.print(F(" "));
         Serial.print(F("output: ")); Serial.print(Output); Serial.print(F(" "));
         if (tuning) {
-          Serial.println("tuning mode");
+          Serial.println(F("tuning mode"));
         } else {
           Serial.print(F("kp: ")); Serial.print(myPID.GetKp()); Serial.print(F(" "));
           Serial.print(F("ki: ")); Serial.print(myPID.GetKi()); Serial.print(F(" "));
