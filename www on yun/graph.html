@@ -13,6 +13,7 @@
 <button onclick="setAutoTune(true)">send aTune activate</button>
 <button onclick="setAutoTune(false)">send aTune cancel</button>
 <button onclick="resetPid()">reset PID</button>
+<button onclick="togglePid()">toggle PID</button>
 
 <form id="tempSettings" >
 <p><label>Range start °C </label><input type="number" value="" name="tempRangeStart" id="tempRangeStart" min="-220" max="1372" step="1" required /></p>
@@ -24,9 +25,17 @@
 <form id="pidSettings" >
 <p><label>Wemo IP</label><input input type="text" value="" id="wemoIp" pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}" /></p>
 <p><label>PID Temperature °C </label><input type="number" value="" id="pid_settemp" min="0" max="80" step="0.01" required /></p>
-<p><label>PID kp </label><input type="number" value="" id="pid_kp" min="0" max="1000000" step="0.01" /></p>
-<p><label>PID ki </label><input type="number" value="" id="pid_ki" min="0" max="1000000" step="0.01" /></p>
-<p><label>PID kd </label><input type="number" value="" id="pid_kd" min="0" max="1000000" step="0.01" /></p>
+<p>
+	<label>PID kp </label><input type="number" value="" id="pid_kp" min="0" max="1000000" step="0.01" />
+	<label>near kp </label><input type="number" value="" id="pid_near_kp" min="0" max="1000000" step="0.01" /></p>
+<p>
+	<label>PID ki </label><input type="number" value="" id="pid_ki" min="0" max="1000000" step="0.01" />
+	<label>near ki </label><input type="number" value="" id="pid_near_ki" min="0" max="1000000" step="0.01" /></p>
+<p>
+	<label>PID kd </label><input type="number" value="" id="pid_kd" min="0" max="1000000" step="0.01" />
+	<label>near kd </label><input type="number" value="" id="pid_near_kd" min="0" max="1000000" step="0.01" /></p>
+<p><label>PID near/far delta T °C</label><input type="number" value="" id="pid_nearfardelta" min="0" max="100" step=".1" /></p>
+<p><label>PID near/far time window analysis minutes</label><input type="number" value="" id="pid_nearfartimewindow" min="0" max="600" step="1" /></p>
 <p><label>PID aTuneStep </label><input type="number" value="" id="aTuneStep" min="0" max="10000" step="1" /></p>
 <p><label>PID aTuneNoise </label><input type="number" value="" id="aTuneNoise" min="0" max="10" step=".05" /></p>
 <p><label>PID aTuneStartValue </label><input type="number" value="" id="aTuneStartValue" min="0" max="20000" step="1" /></p>

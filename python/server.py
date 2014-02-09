@@ -55,6 +55,11 @@ referenceVoltage = 0
 pid_p = 0
 pid_i = 0
 pid_d = 0
+pid_near_kp = 0
+pid_near_ki = 0
+pid_near_kd = 0
+pid_nearfardelta = 0
+pid_nearfartimewindow = 0
 pid_settemp = 0
 wemoIp = ""
 aTuneStep = 0
@@ -71,12 +76,15 @@ class Serial2WsOptions(usage.Options):
 	]
 
 	optParameters = [
-		['baudrate', 'b', 9600, 'Serial baudrate'],
+		['baudrate', 'b', 115200, 'Serial baudrate'],
 		['port', 'p', '/dev/ttyATH0', 'Serial port to use (e.g. 3 for a COM port on Windows, /dev/ttyATH0 for Arduino Yun, /dev/ttyACM0 for Serial-over-USB on RaspberryPi'],
 		['webport', 'w', 8080, 'Web port to use for embedded Web server'],
 		['wsurl', 's', "ws://localhost:9000", 'WebSocket port to use for embedded WebSocket server']
 	]
 
+## Sent values to Arduino (used for delayed serial.write)
+def sentAutotuneValuesToArduino(context, binaryPid):
+	context.transport.write("Q" + binaryPid)
 
 ## MCU protocol
 ##
@@ -117,6 +125,12 @@ class McuProtocol(LineReceiver):
 			print "Sending reset signal to arduino"
 		self.transport.write("R")
 		
+	@exportRpc("togglePid")
+	def sendTogglePidSignal(self):
+		if self.wsMcuFactory.debugSerial:
+			print "Sending toggle PID signal to arduino"
+		self.transport.write("T")
+		
 	@exportRpc("getEntireDB")
 	def readTemperatureDB(self, numberTotal):
 		if self.wsMcuFactory.debugSerial:
@@ -148,8 +162,8 @@ class McuProtocol(LineReceiver):
 	def readPidSettings(self):
 		if self.wsMcuFactory.debugSerial:
 			print "sending runtime PID settings"
-		pidsetupTsv = "wemoIp\tpid_settemp\tpid_kp\tpid_ki\tpid_kd\taTuneStep\taTuneNoise\taTuneStartValue\taTuneLookBack\n"
-		pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\n".format(wemoIp, pid_settemp, pid_p, pid_i, pid_d, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack))
+		pidsetupTsv = "wemoIp\tpid_settemp\tpid_kp\tpid_ki\tpid_kd\tpid_near_kp\tpid_near_ki\tpid_near_kd\tpid_nearfardelta\tpid_nearfartimewindow\taTuneStep\taTuneNoise\taTuneStartValue\taTuneLookBack\n"
+		pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\t{9}\t{10}\t{11}\t{12}\t{13}\n".format(wemoIp, pid_settemp, pid_p, pid_i, pid_d, pid_near_kp, pid_near_ki, pid_near_kd, pid_nearfardelta, pid_nearfartimewindow, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack))
 		return pidsetupTsv
 
 	##Updates the settings in the database and resets the database
@@ -180,19 +194,24 @@ class McuProtocol(LineReceiver):
 		#also send these values to the arduino, since the PID will only be possible with the right temperature
 		if self.wsMcuFactory.debugSerial:
 			print "Sending PID and THERMO settings to Arduino: " + str(newTempEnd)
-		binaryPid = pack('<fffffffffff', pid_settemp, pid_p, pid_i, pid_d, set_min, set_max, referenceVoltage, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack)
+		binaryPid = pack('<ffffffffffffffff', pid_settemp, pid_p, pid_i, pid_d, pid_near_kp, pid_near_ki, pid_near_kd, pid_nearfardelta, pid_nearfartimewindow, set_min, set_max, referenceVoltage, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack)
 		self.transport.write("P" + binaryPid)
 		return True
 
 	@exportRpc("newPIDSettings")
-	def writePIDSettings(self, newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack):
-		global pid_p, pid_i, pid_d, pid_settemp, wemoIp, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack
+	def writePIDSettings(self, newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newPID_near_kp, newPID_near_ki, newPID_near_kd, newPID_nearfardelta, newPID_nearfartimewindow, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack):
+		global pid_p, pid_i, pid_d, pid_near_kp, pid_near_ki, pid_near_kd, pid_nearfardelta, pid_nearfartimewindow, pid_settemp, wemoIp, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack
 		#Parse floats
 		newWemoIP = newWemoIP
 		newPidSettemp = float(newPidSettemp)
 		newPID_kp = float(newPID_kp)
 		newPID_ki = float(newPID_ki)
 		newPID_kd = float(newPID_kd)
+		newPID_near_kp = float(newPID_near_kp)
+		newPID_near_ki = float(newPID_near_ki)
+		newPID_near_kd = float(newPID_near_kd)
+		newPID_nearfardelta = float(newPID_nearfardelta)
+		newPID_nearfartimewindow = float(newPID_nearfartimewindow)
 		newATuneStep = float(newATuneStep)
 		newATuneNoise = float(newATuneNoise)
 		newATuneStartValue = float(newATuneStartValue)
@@ -206,17 +225,30 @@ class McuProtocol(LineReceiver):
 			raise Exception("PID - I must be between 0 and 1000000")
 		if (newPID_kd > 1000000 or newPID_kd < 0):
 			raise Exception("PID - D must be between 0 and 1000000")
-		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
+		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newPID_near_kp, newPID_near_ki, newPID_near_kd, newPID_nearfardelta, newPID_nearfartimewindow, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
 		sq3cur = sq3con.cursor()
-		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?, aTuneStep = ?, aTuneNoise = ?, aTuneStartValue = ?, aTuneLookBack = ?", thermoSettings)
+		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?, pid_near_kp = ?, pid_near_ki = ?, pid_near_kd = ?, pid_nearfardelta = ?, pid_nearfartimewindow = ?, aTuneStep = ?, aTuneNoise = ?, aTuneStartValue = ?, aTuneLookBack = ?", thermoSettings)
 		if self.wsMcuFactory.debugSerial:
 			print "Sending PID and THERMO settings to Arduino: " + str(newPidSettemp)
-		binaryPid = pack('<fffffffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, set_min, set_max, referenceVoltage, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
+		binaryPid = pack('<ffffffffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newPID_near_kp, newPID_near_ki, newPID_near_kd, newPID_nearfardelta, newPID_nearfartimewindow, set_min, set_max, referenceVoltage)
 		self.transport.write("P" + binaryPid)
+		binaryPid = pack('<ffff', newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
+		#The rest needs to be sent later, because the default Arduino buffersize is 64
+		#Wait 300ms before sending
+		reactor.callLater(.3, sentAutotuneValuesToArduino, self, binaryPid)
+		#kill old  PHP process, if IP has changed
+		if (wemoIp != newWemoIP):
+			if (p.poll() == None):
+				p.kill()
 		#safe PID settings for runtime
 		pid_p = newPID_kp
 		pid_i = newPID_ki
 		pid_d = newPID_kd
+		pid_near_kp = newPID_near_kp
+		pid_near_ki = newPID_near_ki
+		pid_near_kd = newPID_near_kd
+		pid_nearfardelta = newPID_nearfardelta
+		pid_nearfartimewindow = newPID_nearfartimewindow
 		pid_settemp = newPidSettemp
 		wemoIp = newWemoIP
 		aTuneStep = newATuneStep
@@ -296,9 +328,10 @@ def sqlite3Close():
 def loadThermoSettings():
 	global set_min, set_max, referenceVoltage
 	global pid_p, pid_i, pid_d, pid_settemp, wemoIp
+	global pid_near_kp, pid_near_ki, pid_near_kd, pid_nearfardelta, pid_nearfartimewindow
 	global aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack
 	sq3cur = sq3con.cursor()
-	sq3cur.execute("SELECT set_min,set_max,referenceVoltage,pid_kp,pid_ki,pid_kd,wemo_temp_max,wemo_ip,aTuneStep,aTuneNoise,aTuneStartValue,aTuneLookBack FROM `thermosetup`")
+	sq3cur.execute("SELECT set_min,set_max,referenceVoltage,pid_kp,pid_ki,pid_kd,pid_near_kp,pid_near_ki,pid_near_kd,pid_nearfardelta,pid_nearfartimewindow,wemo_temp_max,wemo_ip,aTuneStep,aTuneNoise,aTuneStartValue,aTuneLookBack FROM `thermosetup`")
 	thermosetup = sq3cur.fetchone()
 	set_min = float(thermosetup[0])
 	set_max = float(thermosetup[1])
@@ -306,12 +339,17 @@ def loadThermoSettings():
 	pid_p = float(thermosetup[3])
 	pid_i = float(thermosetup[4])
 	pid_d = float(thermosetup[5])
-	pid_settemp = float(thermosetup[6])
-	wemoIp = thermosetup[7]
-	aTuneStep = thermosetup[8]
-	aTuneNoise = thermosetup[9]
-	aTuneStartValue = thermosetup[10]
-	aTuneLookBack = thermosetup[11]
+	pid_near_kp = float(thermosetup[6])
+	pid_near_ki = float(thermosetup[7])
+	pid_near_kd = float(thermosetup[8])
+	pid_nearfardelta = float(thermosetup[9])
+	pid_nearfartimewindow = float(thermosetup[10])
+	pid_settemp = float(thermosetup[11])
+	wemoIp = thermosetup[12]
+	aTuneStep = thermosetup[13]
+	aTuneNoise = thermosetup[14]
+	aTuneStartValue = thermosetup[15]
+	aTuneLookBack = thermosetup[16]
 	
 	print "Settings read from database for runtime: eg. REFVOLT=" + str(referenceVoltage) + " and " + str(wemoIp) + " and " + str(aTuneStartValue)
 

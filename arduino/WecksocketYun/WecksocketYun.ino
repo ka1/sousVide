@@ -38,6 +38,12 @@ float temp_range_min;
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
 
+int currentTemperature1023;
+#define LASTANALYSISSIZE 60
+int lastTemperatures[LASTANALYSISSIZE];
+int temperatureAnalysisDelay;
+int lastTemperaturesSize = 0;
+
 //last serial command
 int last_cmd = -1;
 
@@ -47,6 +53,11 @@ float *pPid_settemp;
 float *pPid_p;
 float *pPid_i;
 float *pPid_d;
+float *pPid_near_p;
+float *pPid_near_i;
+float *pPid_near_d;
+float *pPid_nearfardelta;
+float *pPid_nearfartimewindow;
 float *range_min;
 float *range_max;
 float *referenceVoltage;
@@ -61,6 +72,8 @@ byte WindowSize = 10; //in seconds = *1000 MUST BE LARGER THAN 2 SECONDS! (or ad
 unsigned long windowStartTime;
 PID myPID(&Input, &Output, &Setpoint, 0, 0, 0, DIRECT); //2,5,1 or 1,0.05,0.25 (cons)
 bool pidStarted = false;
+bool pidNear = false; //the near PID should be used NEAR the settemp. the parameter set should be more aggressive (contain more I or I at all)
+bool pidSettingsReceived = false; //only turn on if settings where received.
 int minOutput = 100; //ignore any outputs less than minOutput milliseconds
 
 //Autotune
@@ -84,8 +97,17 @@ void setup() {
 
   //EXTERNAL AREF Voltage should be 1.134V
   analogReference(EXTERNAL);
+  
+  //wait for UBOOT finish
+  port->begin(115200);
+  do {
+    while (port->available() > 0) {
+      port->read();
+    }
 
-  port->begin(9600);
+    delay(2000);
+  } while (port->available() > 0);
+//  port->begin(9600);
 
   //fill data array with zeros
   for (int i = 0; i < RAWDATASIZE; i++) {
@@ -95,18 +117,23 @@ void setup() {
   lastTime = millis();
 
   //set the memory adresses of the pid settings
-  pPidData = (byte *)malloc(28);
+  pPidData = (byte *)malloc(64);
   pPid_settemp = (float *)pPidData;
   pPid_p = (float *)(pPidData + 4);
   pPid_i = (float *)(pPidData + 8);
   pPid_d = (float *)(pPidData + 12);
-  range_min = (float *)(pPidData + 16);
-  range_max = (float *)(pPidData + 20);
-  referenceVoltage = (float *)(pPidData + 24);
-  aTuneStep = (float *)(pPidData + 28);
-  aTuneNoise = (float *)(pPidData + 32);
-  aTuneStartValue = (float *)(pPidData + 36);
-  aTuneLookBack = (float *)(pPidData + 40);
+  pPid_near_p = (float *)(pPidData + 16);
+  pPid_near_i = (float *)(pPidData + 20);
+  pPid_near_d = (float *)(pPidData + 24);
+  pPid_nearfardelta = (float *)(pPidData + 28);
+  pPid_nearfartimewindow = (float *)(pPidData + 32);
+  range_min = (float *)(pPidData + 36);
+  range_max = (float *)(pPidData + 40);
+  referenceVoltage = (float *)(pPidData + 44);
+  aTuneStep = (float *)(pPidData + 48);
+  aTuneNoise = (float *)(pPidData + 52);
+  aTuneStartValue = (float *)(pPidData + 56);
+  aTuneLookBack = (float *)(pPidData + 60);
 
   //PID
   windowStartTime = millis();
@@ -118,6 +145,9 @@ void setup() {
   myPID.SetSampleTime(WindowSize * 1000);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
+  
+  //set all values in last temperatures array to -1
+  resetLastTemperaturesArray();
 
   //Autotune
   aTune.SetControlType(1); //1=PID, 0=PI
@@ -167,11 +197,11 @@ int median(int array[]) {
 
 void getAnalog(int pin, int id) {
   // read analog value and map/constrain to output range
-  int cur = median(rawData);
+  currentTemperature1023 = median(rawData);
 
   port->print(id);
   port->print('\t');
-  port->print(cur);
+  port->print(currentTemperature1023);
   port->println();
 }
 
@@ -206,6 +236,48 @@ void AutoTuneHelper(boolean start)
     myPID.SetMode(ATuneModeRemember);
 }
 
+int getMaxValue(int theArray[]){
+  int maxValue = 0;
+  for(int i = 0; i < LASTANALYSISSIZE; i++){
+    if (theArray[i] > -1) {
+      maxValue = max(theArray[i],maxValue);
+    }
+  }
+  return maxValue;
+}
+
+int getMinValue(int theArray[]){
+  int minValue = 1023;
+  for(int i = 0; i < LASTANALYSISSIZE; i++){
+    if (theArray[i] > -1){
+      minValue = min(theArray[i],minValue);
+    }
+  }
+  return minValue;
+}
+
+float getAverageValue(int theArray[]){
+  int totalSum = 0;
+  int totalCount = 0;
+
+  for(int i = 0; i < LASTANALYSISSIZE; i++){
+    if (theArray[i] > -1){
+      totalSum += theArray[i];
+      totalCount++;
+    }
+  }
+  
+  return (float) totalSum / (float) totalCount;
+}
+
+void resetLastTemperaturesArray(){
+  for(int i = 0; i < LASTANALYSISSIZE; i++){
+    lastTemperatures[i] = -1;
+  }
+  
+  lastTemperaturesSize = 0;
+}
+
 void loop() {
   //if receiving new PID values
   if (last_cmd == -1 && port->available()) {
@@ -216,51 +288,74 @@ void loop() {
   //Compute commands
   if (last_cmd != -1)
   {
-    if ((last_cmd == 'P') && (port->available() >= 44))
+    //Serial.println(port->available());
+    if (last_cmd == 'P')
     {
-      port->readBytes((char *)pPidData, 44);
-
-      Serial.print(F("Received new PID values: Setpoint ")); Serial.print(*pPid_settemp);
-      Serial.print(F("C - P")); Serial.print(*pPid_p);
-      Serial.print(F(" - I"));  Serial.print(*pPid_i);
-      Serial.print(F(" - D"));  Serial.println(*pPid_d);
-      Serial.print(F("Received new Thermo values: MIN ")); Serial.print(*range_min);
-      Serial.print(F(" - MAX "));  Serial.print(*range_max);
-      Serial.print(F(" - REFVOLT ")); Serial.println(*referenceVoltage);
-      Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
-      Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
-      Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
-      Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
-
-      //safe to PID controller
-      Setpoint = *pPid_settemp;
-      myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
-      if (tuning) {
-        Serial.println(F("Tuning parameters reset. Restarting tuning."));
-        changeAutoTune(); //first call will cancel the tuning
-        changeAutoTune(); //second call with set the values and start again
+      if (port->available() >= 48){
+        port->readBytes((char *)pPidData, 48);
+  
+        Serial.print(F("Received new PID values: Setpoint ")); Serial.print(*pPid_settemp);
+        Serial.print(F("C - P")); Serial.print(*pPid_p);
+        Serial.print(F(" - I"));  Serial.print(*pPid_i);
+        Serial.print(F(" - D"));  Serial.print(*pPid_d);
+        Serial.print(F(" - NP")); Serial.print(*pPid_near_p);
+        Serial.print(F(" - NI"));  Serial.print(*pPid_near_i);
+        Serial.print(F(" - ND"));  Serial.print(*pPid_near_d);
+        Serial.print(F(" - NDT"));  Serial.print(*pPid_nearfardelta);
+        Serial.print(F(" - NTW"));  Serial.println(*pPid_nearfartimewindow);
+        Serial.print(F("Received new Thermo values: MIN ")); Serial.print(*range_min);
+        Serial.print(F(" - MAX "));  Serial.print(*range_max);
+        Serial.print(F(" - REFVOLT ")); Serial.println(*referenceVoltage);
+  
+        //safe to PID controller
+        Setpoint = *pPid_settemp;
+        myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+        pidStarted = true;
+        pidSettingsReceived = true;
+        temperatureAnalysisDelay = *pPid_nearfartimewindow;
+        last_cmd = -1;
       }
-      pidStarted = true;
-      last_cmd = -1;
     }
-    else if ((last_cmd == 'O') && (port->available() >= 1))
+    else if (last_cmd == 'Q'){
+      if (port->available() >= 16){
+        //sending more PID parameters in a different string, because the (default) serial buffer is 64 bytes large
+        port->readBytes((char *)pPidData + 48, 16);
+        
+        Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
+        Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
+        Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
+        Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
+  
+        if (tuning) {
+          Serial.println(F("Tuning parameters reset. Restarting tuning."));
+          changeAutoTune(); //first call will cancel the tuning
+          changeAutoTune(); //second call with set the values and start again
+        }
+        last_cmd = -1;
+      }
+    }
+    else if (last_cmd == 'O')
     {
-      //only switch LED on and off
-      int inByte = port->read();
-      if (inByte == '0') {
-        digitalWrite(ledPin, LOW);
-      } else if (inByte == '1') {
-        digitalWrite(ledPin, HIGH);
+      if (port->available() >= 1){
+        //only switch LED on and off
+        int inByte = port->read();
+        if (inByte == '0') {
+          digitalWrite(ledPin, LOW);
+        } else if (inByte == '1') {
+          digitalWrite(ledPin, HIGH);
+        }
+  
+        last_cmd = -1;
       }
-
-      last_cmd = -1;
     }
-    else if ((last_cmd == 'A') && (port->available() >= 1)) {
-      //only switch LED on and off
-      int inByte = port->read();
-      //switch tuning, if value received is different from the tuning state
-      if ((inByte == '1' && !tuning) || (inByte != '1' && tuning)) changeAutoTune();
-      last_cmd = -1;
+    else if (last_cmd == 'A') {
+      if (port->available() >= 1){
+        //only switch LED on and off
+        int inByte = port->read();
+        //switch tuning, if value received is different from the tuning state
+        if ((inByte == '1' && !tuning) || (inByte != '1' && tuning)) changeAutoTune();
+        last_cmd = -1;
+      }
     }
     else if (last_cmd == 'R') {
       Serial.println("RESETTING PID");
@@ -268,6 +363,29 @@ void loop() {
       Setpoint = *pPid_settemp;
 
       myPID.ResetIterm();
+      last_cmd = -1;
+    }
+    else if (last_cmd == 'T') {
+      //first switch off autotune
+      if (tuning) changeAutoTune();
+      if (pidStarted){
+        pidStarted = false;
+        Serial.println(F("PID turned off"));
+      } else {
+        if (pidSettingsReceived) {
+          pidStarted = true;
+          Serial.println(F("PID turned on"));
+        } else {
+          Serial.println(F("PID settings not yet received. Still turned off"));
+        }
+      }
+      last_cmd = -1;
+    }
+    //empty one char from buffer
+    else {
+      if (port->available() > 0) {
+        port->read();
+      }
       last_cmd = -1;
     }
   }
@@ -279,6 +397,14 @@ void loop() {
 
     //send temperature value
     getAnalog(A0, 0);
+    
+    //analyse last temperatures
+    //move all values to 1 above, so that we can save to the 0 value
+    for(int i = LASTANALYSISSIZE - 1; i>=0; i--){
+      lastTemperatures[i+1] = lastTemperatures[i];
+    }
+    lastTemperatures[0] = currentTemperature1023;
+    lastTemperaturesSize++;
 
     if (pidStarted) {
       //see if the window has passed. only then, compute pid or autotune
@@ -293,7 +419,52 @@ void loop() {
         }
 
         // -------- PID AND AUTOTUNE --------
-        Input = calculateTemperature(median(rawData));
+        Input = calculateTemperature(currentTemperature1023);
+        
+        // See if we have to change from near to far PID parameter set
+        //but only if we have filled the array
+        if (lastTemperaturesSize > LASTANALYSISSIZE){
+          float theMax = calculateTemperature(getMaxValue(lastTemperatures));
+          float theMin = calculateTemperature(getMinValue(lastTemperatures));
+          float theAverage = calculateTemperature(getAverageValue(lastTemperatures));
+          if (!pidNear) {
+            //if the maximum value was lower than now + deltaT
+            //or if the minimum value was larger than now - deltaT
+            //ie. was the temperature always within the deltaT, relative to now
+            if (theMax < (theAverage + *pPid_nearfardelta) || theMin > (theAverage - *pPid_nearfardelta)) {
+              Serial.println("CHANGING TO NEAR PARAMETER SET");
+              pidNear = true;
+              myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
+              resetLastTemperaturesArray();
+            }
+          }
+          //if already in near set
+          else {
+            //emergency fallback: go to far parameter set, if we are more than 0.6C above settemp
+            if (Input >= Setpoint + 0.6) {
+              Serial.println("EMERGENCY CHANGING TO FAR PARAMETER SET BECAUSE TOO HIGH. SET ITERM TO 0");
+              pidNear = false;
+              myPID.ResetIterm();
+              myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+              resetLastTemperaturesArray();
+            }
+            else {
+              //maximum does not matter ... only:
+              //if the minimum value was lower than average - deltaT
+              //ie. was the temperature ever out of average - deltaT
+              if (theMax > (theAverage + *pPid_nearfardelta) || theMin < (theAverage - *pPid_nearfardelta)) {
+                Serial.print(F("CHANGING TO FAR PARAMETER SET, MIN WAS "));
+                Serial.print(theMin);
+                Serial.print(F(", AVERAGE WAS "));
+                Serial.println(theAverage);
+                pidNear = false;
+                myPID.ResetIterm();
+                myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+                resetLastTemperaturesArray();
+              }
+            }
+          }
+        }
 
         // ------------ AUTOTUNE ------------
         if (tuning)
@@ -357,6 +528,7 @@ void loop() {
           port->println(Output);
         } else {
           Serial.println(F(", output too small "));
+        
         }
       }
 

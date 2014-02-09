@@ -12,6 +12,11 @@ function resetPid(){
 	sess.call("rpc:resetPid").always(ab.log);
 }
 
+function togglePid(){
+	console.log("sending toggle pid signal");
+	sess.call("rpc:togglePid").always(ab.log);
+}
+
 function autoTuneDataReceived(topicUri, aTuneData) {
 	console.log(aTuneData);
 	alert("Autotune Data received: \nP: " + aTuneData.p + "\nI: " + aTuneData.i + "\nD: " + aTuneData.d);
@@ -109,6 +114,11 @@ function askForPidSettings(){
 		pid_kp = parseFloat(settings[0].pid_kp);
 		pid_ki = parseFloat(settings[0].pid_ki);
 		pid_kd = parseFloat(settings[0].pid_kd);
+		pid_near_kp = parseFloat(settings[0].pid_near_kp);
+		pid_near_ki = parseFloat(settings[0].pid_near_ki);
+		pid_near_kd = parseFloat(settings[0].pid_near_kd);
+		pid_nearfardelta = parseFloat(settings[0].pid_nearfardelta);
+		pid_nearfartimewindow = parseFloat(settings[0].pid_nearfartimewindow);
 		aTuneStep = parseFloat(settings[0].aTuneStep);
 		aTuneNoise = parseFloat(settings[0].aTuneNoise);
 		aTuneStartValue = parseFloat(settings[0].aTuneStartValue);
@@ -119,6 +129,11 @@ function askForPidSettings(){
 		document.getElementById('pid_kp').value = pid_kp;
 		document.getElementById('pid_ki').value = pid_ki;
 		document.getElementById('pid_kd').value = pid_kd;
+		document.getElementById('pid_near_kp').value = pid_near_kp;
+		document.getElementById('pid_near_ki').value = pid_near_ki;
+		document.getElementById('pid_near_kd').value = pid_near_kd;
+		document.getElementById('pid_nearfardelta').value = pid_nearfardelta;
+		document.getElementById('pid_nearfartimewindow').value = pid_nearfartimewindow;
 		document.getElementById('aTuneStep').value = aTuneStep;
 		document.getElementById('aTuneNoise').value = aTuneNoise;
 		document.getElementById('aTuneStartValue').value = aTuneStartValue;
@@ -144,13 +159,18 @@ function sendPIDSettings(){
 	sendPid_kp = document.getElementById('pid_kp').value;
 	sendPid_ki = document.getElementById('pid_ki').value;
 	sendPid_kd = document.getElementById('pid_kd').value;
+	sendPid_near_kp = document.getElementById('pid_near_kp').value;
+	sendPid_near_ki = document.getElementById('pid_near_ki').value;
+	sendPid_near_kd = document.getElementById('pid_near_kd').value;
+	sendPid_nearfardelta = document.getElementById('pid_nearfardelta').value;
+	sendPid_nearfartimewindow = document.getElementById('pid_nearfartimewindow').value;
 	sendATuneStep = document.getElementById('aTuneStep').value;
 	sendATuneNoise = document.getElementById('aTuneNoise').value;
 	sendATuneStartValue = document.getElementById('aTuneStartValue').value;
 	sendATuneLookBack = document.getElementById('aTuneLookBack').value;
 
 	//send these values
-	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd, sendATuneStep, sendATuneNoise, sendATuneStartValue, sendATuneLookBack).then(
+	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd, sendPid_near_kp, sendPid_near_ki, sendPid_near_kd, sendPid_nearfardelta, sendPid_nearfartimewindow, sendATuneStep, sendATuneNoise, sendATuneStartValue, sendATuneLookBack).then(
 		function (result) {
 			//safe the values
 			pidSetTemp = parseFloat(sendPid_settemp);
