@@ -22,6 +22,18 @@ function autoTuneDataReceived(topicUri, aTuneData) {
 	alert("Autotune Data received: \nP: " + aTuneData.p + "\nI: " + aTuneData.i + "\nD: " + aTuneData.d);
 }
 
+function pidSkipped(topicUri, skipCount) {
+	console.log("PID output skipped. Happened " + skipCount + " times in a row.");
+	if (skipCount == 10){
+		alert("PID skipped 10 times in a row");
+	}
+}
+
+function pidSent(topicUri, pidLength) {
+	console.log("PID sent: " + pidLength + "ms");
+}
+
+
 //function receives WS new data event and draws the single datum
 function newRawDataReceived(topicUri, singleDatum) {
 	singleDatum.Zeitpunkt = parseDate(singleDatum.Zeitpunkt);
@@ -290,6 +302,8 @@ window.onload = function () {
 	      sess.prefix("event", "http://raumgeist.dyndns.org/thermo#");
 	      sess.subscribe("event:rawValue", newRawDataReceived);
 	      sess.subscribe("event:autoTuneReady", autoTuneDataReceived);
+	      sess.subscribe("event:PIDOutputSkipped", pidSkipped);
+	      sess.subscribe("event:PIDOutputSent", pidSent);
 	
 	      sess.prefix("rpc", "http://raumgeist.dyndns.org/thermoControl#");
 	

@@ -282,9 +282,11 @@ class McuProtocol(LineReceiver):
 					#TODO: manage autoexit. run a php-shutdown script. then maybe count the number of failures and do a total exit after 5 or so?
 					print "ALERT. PROCESS STILL RUNNING. SKIPPING THIS PROCESS RUN. SKIPPED " + str(pSkipped)
 					pSkipped += 1
+					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSkipped", pSkipped)
 			else:
 				p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
 				pSkipped = 0
+				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
 		elif (line.startswith("A")):
 			try:
 				autoTuneString = str(line[1:])
