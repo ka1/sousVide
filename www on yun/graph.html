@@ -14,13 +14,14 @@
 <button onclick="setAutoTune(false)">send aTune cancel</button>
 <button onclick="resetPid()">reset PID</button>
 <button onclick="togglePid()">toggle PID</button>
+<button onclick="resetGraph()">reset graph</button>
 
 <form id="tempSettings" >
 <p><label>Range start °C </label><input type="number" value="" name="tempRangeStart" id="tempRangeStart" min="-220" max="1372" step="1" required /></p>
 <p><label>Range end °C </label><input type="number" value="" name="tempRangeEnd" id="tempRangeEnd" min="-220" max="1372" step="1" required /></p>
-<p><label>Reference Voltage (default 1.134) </label><input type="number" value="" name="refVolt" id="refVolt" min="0" max="5" step=".0001" required /></p>
+<p><label>Reference Voltage (default 1.134) </label><input type="number" value="" name="refVolt" id="refVolt" min="0" max="5" step=".001" required /></p>
 </form>
-<button onclick='sendThermoSettings()'>Reset graph with settings</button>
+<button onclick='sendThermoSettings()'>Submit settings and update graph</button>
 
 <form id="pidSettings" >
 <p><label>Wemo IP</label><input input type="text" value="" id="wemoIp" pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}" /></p>

@@ -36,6 +36,8 @@ function newRawDataReceived(topicUri, singleDatum) {
 	y2.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
 	y.domain(y2.domain()); //set main window y scale to brush window scale
 	
+	//TODO: check if we can use updateGraphDrawing() here
+	
 	//so vielleicht?
 	if (runningBrush){
 		var brushLeft = d3.time.minute.offset(singleDatum.Zeitpunkt, -10);
@@ -46,10 +48,10 @@ function newRawDataReceived(topicUri, singleDatum) {
 	}
 	
 	//draw new graphs
-	graphMain.select("path").attr("d", line);
+	graphMain.select("path").datum(graphData).attr("d", line);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
-	graphBrush.select("path").attr("d", line2);
+	graphBrush.select("path").datum(graphData).attr("d", line2);
 	graphBrush.select(".x.axis").call(xAxis2);
 	
 	//move settemp lines vertically
@@ -62,6 +64,21 @@ function newRawDataReceived(topicUri, singleDatum) {
 	return;
 }
 
+function updateGraphDrawing(){
+	//rescale
+	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
+	x2.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
+	y2.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
+	y.domain(y2.domain()); //set main window y scale to brush window scale
+	
+	//draw new graphs
+	graphMain.select("path").datum(graphData).attr("d", line);
+	graphMain.select(".x.axis").call(xAxis);
+	graphMain.select(".y.axis").call(yAxis);
+	graphBrush.select("path").datum(graphData).attr("d", line2);
+	graphBrush.select(".x.axis").call(xAxis2);
+}
+
 function controlLed(status) {
 	sess.call("rpc:control-led", status).always(ab.log);
 }
@@ -71,6 +88,7 @@ function setAutoTune(status) {
 }
 
 //this function askes for the settings and is called once in the beginning
+//it also asks for all graph data and triggers the drawing of the graph
 function askForSettings(updateGraph){
 	//should all data be retrieved and the graph be drawn with this data
 	if (updateGraph == null){
@@ -98,7 +116,13 @@ function askForSettings(updateGraph){
 				
 				//store data in globally available array
 				graphData = data;
-				drawGraph();
+				console.log('Graph data stored');
+				
+				//only really draw the graph if we have never drawn the graph
+				if (!graphDrawn) {
+					console.log('Redrawing graph');
+					drawGraph();
+				}
 			});
 		}
 	});
@@ -202,13 +226,25 @@ function sendPIDSettings(){
 
 }
 
-function sendThermoSettings(){
+function resetGraph(){
 	if (!confirm("Are you sure you want to reset the graph?")){
-		//receive (old) settings
-		askForSettings(false);
 		return false;
 	}
 	
+	sess.call("rpc:deleteAllData").then(
+		function (result) {
+			askForSettings(true); //asks for data and redraws the graph
+			console.log('Successfully deleted all data');
+		}, function (error) {
+			alert("Server answered with error code.\nMessage: " + error.desc);
+			console.log('Error resetting graph');
+			console.log(error);
+		}
+	);
+
+}
+
+function sendThermoSettings(){
 	var theForm = document.getElementById('tempSettings');
 	if (!theForm.checkValidity()){
 		event.preventDefault();
@@ -226,8 +262,9 @@ function sendThermoSettings(){
 	//send these values
 	sess.call("rpc:newThermoSettings", sendRefVolt, sendTempRangeEnd, sendTempRangeStart).then(
 		function (result) {
-			graphData.length = 0;
-			console.log('Successfully reset graph with new settings');
+			askForSettings(true); //we need to receive the raw values again. these where not stored.  this asks for data and redraws the graph
+			updateGraphDrawing();
+			console.log('Successfully sent new settings');
 		}, function (error) {
 			alert("Server did not accept values. Resetting values.\nMessage: " + error.desc);
 			console.log('Error resettings graph or sending settings');
@@ -284,6 +321,8 @@ var	hoverLineX, //X-part of crosshair
 	currentTemperatureText, //temperature next to crosshair
 	runningBrush = true,
 	graphData = []; //the data
+
+var graphDrawn = false; //is the graph drawn already
 
 var startWindowTime = 1800, //Window width in seconds
 	temperatureMargin = 5; //temperature scope to extend beyond real scope
@@ -494,6 +533,8 @@ function drawGraph(){
 	  .selectAll("rect")
 	    .attr("y", -6)
 	    .attr("height", height2 + 7);
+	
+	graphDrawn = true;
 }
 
 function mousemove(){

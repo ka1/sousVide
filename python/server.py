@@ -166,6 +166,16 @@ class McuProtocol(LineReceiver):
 		pidsetupTsv += str("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\t{9}\t{10}\t{11}\t{12}\t{13}\n".format(wemoIp, pid_settemp, pid_p, pid_i, pid_d, pid_near_kp, pid_near_ki, pid_near_kd, pid_nearfardelta, pid_nearfartimewindow, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack))
 		return pidsetupTsv
 
+	@exportRpc("deleteAllData")
+	def deleteTemperatureData(self):
+		sq3cur = sq3con.cursor()
+		sq3cur.execute("DELETE FROM temperatures")
+		sq3cur.execute("DELETE FROM SQLITE_SEQUENCE WHERE name = 'temperatures'")
+		if self.wsMcuFactory.debugSerial:
+			print "All data was deleted"
+		return True
+
+
 	##Updates the settings in the database and resets the database
 	@exportRpc("newThermoSettings")
 	def writeThermoSettings(self, newRefVolt, newTempEnd, newTempStart):
@@ -185,8 +195,6 @@ class McuProtocol(LineReceiver):
 		thermoSettings = (newTempStart, newTempEnd, newRefVolt)
 		sq3cur = sq3con.cursor()
 		sq3cur.execute("UPDATE thermosetup SET set_min = ?, set_max = ?, referenceVoltage = ?", thermoSettings)
-		sq3cur.execute("DELETE FROM temperatures")
-		sq3cur.execute("DELETE FROM SQLITE_SEQUENCE WHERE name = 'temperatures'")
 		#Safe settings for runtime
 		referenceVoltage = newRefVolt
 		set_min = newTempStart
