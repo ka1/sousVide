@@ -238,8 +238,9 @@ class McuProtocol(LineReceiver):
 		reactor.callLater(.3, sentAutotuneValuesToArduino, self, binaryPid)
 		#kill old  PHP process, if IP has changed
 		if (wemoIp != newWemoIP):
-			if (p.poll() == None):
-				p.kill()
+			if (p):
+				if (p.poll() == None):
+					p.kill()
 		#safe PID settings for runtime
 		pid_p = newPID_kp
 		pid_i = newPID_ki
