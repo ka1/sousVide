@@ -234,6 +234,7 @@ function resetGraph(){
 	sess.call("rpc:deleteAllData").then(
 		function (result) {
 			askForSettings(true); //asks for data and redraws the graph
+			runningBrush = true; //otherwise we might not be displaying anything
 			console.log('Successfully deleted all data');
 		}, function (error) {
 			alert("Server answered with error code.\nMessage: " + error.desc);
