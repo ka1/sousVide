@@ -21,6 +21,7 @@ import sys, time
 from struct import *
 from subprocess import Popen
 import os
+import httplib, urllib
 
 if sys.platform == 'win32':
 	## on windows, we need to use the following reactor for serial support
@@ -66,6 +67,10 @@ aTuneStep = 0
 aTuneNoise = 0
 aTuneStartValue = 0
 aTuneLookBack = 0
+
+#Pushover
+pushoverMessageCount = 0; #limit the number of message calls while running
+pushoverMessageMax = 20;
 
 class Serial2WsOptions(usage.Options):
 	
@@ -279,10 +284,31 @@ class McuProtocol(LineReceiver):
 			pidLength = int(float(line[1:]))
 			print "PID detected: " + str(pidLength / 1000) + " seconds"
 			if (p and (p.poll() == None)):
-					#TODO: manage autoexit. run a php-shutdown script. then maybe count the number of failures and do a total exit after 5 or so?
-					print "ALERT. PROCESS STILL RUNNING. SKIPPING THIS PROCESS RUN. SKIPPED " + str(pSkipped)
-					pSkipped += 1
-					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSkipped", pSkipped)
+				#TODO: manage autoexit. run a php-shutdown script. then maybe count the number of failures and do a total exit after 5 or so?
+				print "ALERT. PROCESS STILL RUNNING. SKIPPING THIS PROCESS RUN. SKIPPED " + str(pSkipped)
+				pSkipped += 1
+				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSkipped", pSkipped)
+				if (pSkipped == 10):
+					if (pushoverMessageCount < pushoverMessageMax):
+						conn = httplib.HTTPSConnection("api.pushover.net:443")
+						conn.request("POST", "/1/messages.json",
+							urllib.urlencode({
+								"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
+								"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
+								"priority": "1",
+								"sound": "falling",
+								"message": "Socket was not responsive for 10 times in a row",}), { "Content-type": "application/x-www-form-urlencoded" })
+						pushoverMessageCount++
+					elif (pushoverMessageCount == pushoverMessageMax):
+						conn = httplib.HTTPSConnection("api.pushover.net:443")
+						conn.request("POST", "/1/messages.json",
+							urllib.urlencode({
+								"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
+								"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
+								"priority": "1",
+								"sound": "falling",
+								"message": "Socket unresponsive. Too many warnings sent. This will be the last warning until server reset.",}), { "Content-type": "application/x-www-form-urlencoded" })
+						pushoverMessageCount++
 			else:
 				p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
 				pSkipped = 0
