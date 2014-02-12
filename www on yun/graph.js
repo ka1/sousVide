@@ -8,6 +8,10 @@ var thermoRefVoltage, thermoRangeMax, thermoRangeMin;
 var pidSetTemp = 0;
 
 function resetPid(){
+	if (!confirm("Are you sure you want to reset the PID process?")){
+		return false;
+	}
+	
 	console.log("sending reset signal");
 	sess.call("rpc:resetPid").always(ab.log);
 }
