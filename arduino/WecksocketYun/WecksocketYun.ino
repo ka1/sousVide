@@ -378,6 +378,7 @@ void loop() {
         } else {
           alarmTriggered = false;
           digitalWrite(soundPin, LOW);
+          digitalWrite(ledPin, LOW);
         }
         last_cmd = -1;
       }
@@ -583,8 +584,10 @@ void loop() {
   if (alarmTriggered){
     if (fps == 0) {
       digitalWrite(soundPin, HIGH);
+      digitalWrite(ledPin, HIGH);
     } else if (fps == 20) {
       digitalWrite(soundPin, LOW);
+      digitalWrite(ledPin, LOW);
     }
   }
 
