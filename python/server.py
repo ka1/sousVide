@@ -48,6 +48,7 @@ sq3con = None
 p = None
 pSkipped = 0			#how often was php not ready (in a row)
 sqliteErrorCount = 0	#how did a database error occur
+superError = False			#emergency off
 
 #Thermosetup
 set_min = 0
@@ -70,7 +71,7 @@ aTuneLookBack = 0
 
 #Pushover
 pushoverMessageCount = 0; #limit the number of message calls while running
-pushoverMessageMax = 20;
+pushoverMessageMax = 50;
 
 class Serial2WsOptions(usage.Options):
 	
@@ -112,6 +113,16 @@ class McuProtocol(LineReceiver):
 		if self.wsMcuFactory.debugSerial:
 			print "Serial TX:", payload
 		self.transport.write("O" + payload)
+		
+	@exportRpc("control-alarm")
+	def controlAlarm(self, status):
+		if status:
+			payload = '1'
+		else:
+			payload = '0'
+		if self.wsMcuFactory.debugSerial:
+			print "Sending Alarm:", payload
+		self.transport.write("X" + payload)
 		
 	@exportRpc("setTuning")
 	def sendTuningCommand(self, doStart):
@@ -277,12 +288,13 @@ class McuProtocol(LineReceiver):
 
 	def lineReceived(self, line):
 	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
-		global p, pSkipped, sqliteErrorCount
+		global p, pSkipped, sqliteErrorCount, pushoverMessageCount, superError
 		if self.wsMcuFactory.debugSerial:
 			print "Serial RX:", line
 		if (line.startswith("P")):
 			pidLength = int(float(line[1:]))
-			print "PID detected: " + str(pidLength / 1000) + " seconds"
+			if self.wsMcuFactory.debugSerial:
+				print "PID detected: " + str(pidLength / 1000) + " seconds"
 			if (p and (p.poll() == None)):
 				#TODO: manage autoexit. run a php-shutdown script. then maybe count the number of failures and do a total exit after 5 or so?
 				print "ALERT. PROCESS STILL RUNNING. SKIPPING THIS PROCESS RUN. SKIPPED " + str(pSkipped)
@@ -298,21 +310,28 @@ class McuProtocol(LineReceiver):
 								"priority": "1",
 								"sound": "falling",
 								"message": "Socket was not responsive for 10 times in a row",}), { "Content-type": "application/x-www-form-urlencoded" })
-						pushoverMessageCount++
+						pushoverMessageCount += 1
 					elif (pushoverMessageCount == pushoverMessageMax):
 						conn = httplib.HTTPSConnection("api.pushover.net:443")
 						conn.request("POST", "/1/messages.json",
 							urllib.urlencode({
 								"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
 								"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
-								"priority": "1",
-								"sound": "falling",
+								"priority": "2",
+								"retry": 3600,
+								"expire": 6000,
+								"sound": "siren",
 								"message": "Socket unresponsive. Too many warnings sent. This will be the last warning until server reset.",}), { "Content-type": "application/x-www-form-urlencoded" })
-						pushoverMessageCount++
+						pushoverMessageCount += 1
 			else:
-				p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
-				pSkipped = 0
-				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
+				if (superError != True):
+					p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
+					pSkipped = 0
+					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
+				else:
+					if self.wsMcuFactory.debugSerial:
+						print "IGNORING PID. SUPER ERROR TRIGGERED."
+
 		elif (line.startswith("A")):
 			try:
 				autoTuneString = str(line[1:])
@@ -321,6 +340,11 @@ class McuProtocol(LineReceiver):
 				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#autoTuneReady", autoTuneJson)
 			except ValueError:
 				log.err('Unable to parse value %s' % line)
+		elif (line.startswith("F")):
+			nearFarChange = line[1:]
+			if self.wsMcuFactory.debugSerial:
+				print "Changing between near and far: " + nearFarChange
+			self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#NearFarChange", nearFarChange)
 		else:
 			try:
 				## parse data received from MCU
@@ -344,6 +368,33 @@ class McuProtocol(LineReceiver):
 					sqliteErrorCount += 1
 					if self.wsMcuFactory.debugSerial:
 						print "sqlite error: ", msg
+					
+				
+				if (superError == False and data[1] > 501):
+					conn = httplib.HTTPSConnection("api.pushover.net:443")
+					conn.request("POST", "/1/messages.json",
+						urllib.urlencode({
+							"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
+							"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
+							"priority": "2",
+							"retry": 3600,
+							"expire": 6000,
+							"sound": "siren",
+							"message": "Raw value above 501 was received. No further processing will be done. Server is continuing but ignoring PID calls.",}), { "Content-type": "application/x-www-form-urlencoded" })
+					pushoverMessageCount += 1
+					superError = True
+					
+					#Send alarm
+					self.transport.write("X1")
+					
+					if (p):
+						if (p.poll() == None):
+							p.kill()
+					#Sending shutoff signal
+					p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoOff.php',str(wemoIp)])
+					print "PHP wemo OFF called"
+					#reactor.callFromThread(reactor.stop)
+				
 			except ValueError:
 				log.err('Unable to parse value %s' % line)
 
@@ -355,9 +406,9 @@ def sqlite3Close():
 		if (p.poll() == None):
 			p.kill()
 			#Sending shutoff signal
-			p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoOff.php',str(wemoIp)])
-			print "PHP wemo OFF called"
-		print "PHP process was closed at shutdown time"
+		p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoOff.php',str(wemoIp)])
+		print "PHP wemo OFF called"
+	print "PHP process was closed at shutdown time"
 	sq3con.close()
 	print "Database closed successfully"
 	

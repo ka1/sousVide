@@ -20,6 +20,7 @@
 #include <PID_AutoTune_v0.h>
 
 const int ledPin = 13;
+const int soundPin = 8;
 int last = 0;
 
 HardwareSerial *port;
@@ -88,8 +89,11 @@ PID_ATune aTune(&Input, &Output);
 //count how often the loop runs in a second
 int fps = 0;
 
+boolean alarmTriggered = false;
+
 void setup() {
   pinMode(ledPin, OUTPUT);
+  pinMode(soundPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
 
   port = &Serial1; // Arduino Yun
@@ -364,6 +368,20 @@ void loop() {
         last_cmd = -1;
       }
     }
+    else if (last_cmd == 'X') {
+      if (port->available() >= 1){
+        //only switch Sound on and off
+        int inByte = port->read();
+        //switch tuning, if value received is different from the tuning state
+        if (inByte == '1') {
+          alarmTriggered = true;
+        } else {
+          alarmTriggered = false;
+          digitalWrite(soundPin, LOW);
+        }
+        last_cmd = -1;
+      }
+    }
     else if (last_cmd == 'R') {
       Serial.println(F("RESETTING PID"));
       //Reset PID Controler
@@ -442,8 +460,11 @@ void loop() {
             //if the maximum value was lower than now + deltaT
             //or if the minimum value was larger than now - deltaT
             //ie. was the temperature always within the deltaT, relative to now
-            if (theMax < (theAverage + *pPid_nearfardelta) || theMin > (theAverage - *pPid_nearfardelta)) {
+            if (theMax < (theAverage + (*pPid_nearfardelta / (float) 2)) || theMin > (theAverage - (*pPid_nearfardelta / (float) 2))) {
               Serial.println(F("CHANGING TO NEAR PARAMETER SET"));
+              port->print(F("F"));
+              port->println(F("NEAR"));
+
               pidNear = true;
               myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
               resetLastTemperaturesArray();
@@ -458,20 +479,23 @@ void loop() {
               myPID.ResetIterm();
               myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
               resetLastTemperaturesArray();
+              port->print(F("F"));
+              port->println(F("FAR(EMERGENCY)"));
             }
             else {
-              //maximum does not matter ... only:
-              //if the minimum value was lower than average - deltaT
-              //ie. was the temperature ever out of average - deltaT
-              if (theMax > (theAverage + *pPid_nearfardelta) || theMin < (theAverage - *pPid_nearfardelta)) {
+              //if the maximum value was higher than theMin + deltaT
+              //if the minimum value was lower than theMin - deltaT
+              if (theMax > (theMin + *pPid_nearfardelta) || theMin < (theMax - *pPid_nearfardelta)) {
                 Serial.print(F("CHANGING TO FAR PARAMETER SET, MIN WAS "));
                 Serial.print(theMin);
-                Serial.print(F(", AVERAGE WAS "));
-                Serial.println(theAverage);
+                Serial.print(F(", MAX WAS "));
+                Serial.println(theMax);
                 pidNear = false;
                 myPID.ResetIterm();
                 myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
                 resetLastTemperaturesArray();
+                port->print(F("F"));
+                port->println(F("FAR"));
               }
             }
           }
@@ -554,6 +578,15 @@ void loop() {
   rawData[rawDataIdx] = analogRead(A0);
   rawDataIdx++;
   rawDataIdx %= RAWDATASIZE;
+
+  //do alarm
+  if (alarmTriggered){
+    if (fps == 0) {
+      digitalWrite(soundPin, HIGH);
+    } else if (fps == 20) {
+      digitalWrite(soundPin, LOW);
+    }
+  }
 
   // limit update frequency to around 100Hz
   fps++;

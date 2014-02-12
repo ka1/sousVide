@@ -22,6 +22,11 @@ function autoTuneDataReceived(topicUri, aTuneData) {
 	alert("Autotune Data received: \nP: " + aTuneData.p + "\nI: " + aTuneData.i + "\nD: " + aTuneData.d);
 }
 
+function nearFarChangeReceived(topicUri, changeMessage) {
+	console.log("Changing between near and far parameter set: " + changeMessage);
+	alert("Changing between near and far parameter set: " + changeMessage);
+}
+
 function pidSkipped(topicUri, skipCount) {
 	console.log("PID output skipped. Happened " + skipCount + " times in a row.");
 	if (skipCount == 10){
@@ -93,6 +98,10 @@ function updateGraphDrawing(){
 
 function controlLed(status) {
 	sess.call("rpc:control-led", status).always(ab.log);
+}
+
+function controlAlarm(status) {
+	sess.call("rpc:control-alarm", status).always(ab.log);
 }
 
 function setAutoTune(status) {
@@ -302,6 +311,7 @@ window.onload = function () {
 	      sess.prefix("event", "http://raumgeist.dyndns.org/thermo#");
 	      sess.subscribe("event:rawValue", newRawDataReceived);
 	      sess.subscribe("event:autoTuneReady", autoTuneDataReceived);
+	      sess.subscribe("event:NearFarChange", nearFarChangeReceived);
 	      sess.subscribe("event:PIDOutputSkipped", pidSkipped);
 	      sess.subscribe("event:PIDOutputSent", pidSent);
 	
