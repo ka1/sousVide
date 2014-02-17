@@ -17,12 +17,12 @@ function resetPid(){
 }
 
 function switchPid(status){
-	console.log("sending pid signal" + status);
+	console.log("sending pid signal " + status);
 	sess.call("rpc:togglePid", status).always(ab.log);
 }
 
 function controlSocket(status){
-	console.log("sending powersocket signal" + status);
+	console.log("sending powersocket signal " + status);
 	sess.call("rpc:manualPowerSwitch", status).always(ab.log);
 }
 
@@ -44,9 +44,12 @@ function pidSkipped(topicUri, skipCount) {
 }
 
 function pidSent(topicUri, pidLength) {
-	console.log("PID sent: " + pidLength + "ms");
+	console.log("PID sent to WEMO: " + pidLength + "ms");
 }
 
+function pidSentRelais(topicUri, pidLength) {
+	console.log("PID sent via relais: " + pidLength + "ms");
+}
 
 //function receives WS new data event and draws the single datum
 function newRawDataReceived(topicUri, singleDatum) {
@@ -323,6 +326,7 @@ window.onload = function () {
 	      sess.subscribe("event:NearFarChange", nearFarChangeReceived);
 	      sess.subscribe("event:PIDOutputSkipped", pidSkipped);
 	      sess.subscribe("event:PIDOutputSent", pidSent);
+	      sess.subscribe("event:PIDOutputSentRelais", pidSentRelais);
 	
 	      sess.prefix("rpc", "http://raumgeist.dyndns.org/thermoControl#");
 	

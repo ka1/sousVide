@@ -332,6 +332,8 @@ class McuProtocol(LineReceiver):
 					p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
 					pSkipped = 0
 					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
+				elif (useWemo == False):
+					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSentRelais", pidLength)
 				elif (superError == True):
 					if self.wsMcuFactory.debugSerial:
 						print "IGNORING PID. SUPER ERROR TRIGGERED."

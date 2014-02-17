@@ -18,11 +18,18 @@
 
 #include <PID_v1.h>
 #include <PID_AutoTune_v0.h>
+#include <Adafruit_MAX31855.h>
+
+int thermoDO = 5;
+int thermoCS = 6;
+int thermoCLK = 7;
 
 const int ledPin = 13;
 const int soundPin = 8;
 const int heaterPin = 2;
 int last = 0;
+
+bool thermoMax = true; //true if using the max31855 thermocouple
 
 HardwareSerial *port;
 
@@ -46,6 +53,9 @@ int lastTemperatures[LASTANALYSISSIZE];
 int sendCounter = 0; //for the analysisDelay to run every N sends
 int lastTemperaturesSize = 0;
 int analysisDelay;
+
+//MAX31855
+Adafruit_MAX31855 thermocouple(thermoCLK, thermoCS, thermoDO);
 
 //last serial command
 int last_cmd = -1;
@@ -119,7 +129,7 @@ void setup() {
     }
 
     Serial.println(F("WAITING FOR UBOOT"));
-    delay(30000);
+    //delay(30000);
   } while (port->available() > 0);
   //  port->begin(9600);
 
@@ -179,6 +189,12 @@ float calculateTemperature(int rawTemp) {
   return round(temp * 10.0) / 10.0;
 }
 
+float revertTemperature(double celsius) {
+  float temp = (celsius - (float) *range_min) / (((float) *range_max) - ((float) *range_min));
+  temp = (temp * 1023) / (float) * referenceVoltage;
+  return temp;
+}
+
 int indexOfMax(int array[]) {
   int maxi = -1;
   int maxIndex = -1;
@@ -214,8 +230,11 @@ int median(int array[]) {
 }
 
 void getAnalog(int pin, int id) {
-  // read analog value and map/constrain to output range
-  currentTemperature1023 = median(rawData);
+  if (thermoMax){
+    currentTemperature1023 = revertTemperature(thermocouple.readCelsius());
+  } else {
+    currentTemperature1023 = median(rawData);
+  }
 
   port->print(id);
   port->print('\t');
