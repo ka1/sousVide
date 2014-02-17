@@ -21,6 +21,7 @@
 
 const int ledPin = 13;
 const int soundPin = 8;
+const int heaterPin = 2;
 int last = 0;
 
 HardwareSerial *port;
@@ -78,6 +79,10 @@ bool pidNear = false; //the near PID should be used NEAR the settemp. the parame
 bool pidSettingsReceived = false; //only turn on if settings where received.
 int minOutput = 100; //ignore any outputs less than minOutput milliseconds
 
+//relais
+unsigned long onUntilMillis = 0;
+bool relaisIsOn = false;
+
 //Autotune
 byte ATuneModeRemember = 2;
 //double aTuneStep = 200, aTuneNoise = 0.1, aTuneStartValue = 1000;
@@ -94,6 +99,8 @@ boolean alarmTriggered = false;
 void setup() {
   pinMode(ledPin, OUTPUT);
   pinMode(soundPin, OUTPUT);
+  pinMode(heaterPin, OUTPUT);
+  digitalWrite(heaterPin, HIGH);
   digitalWrite(ledPin, HIGH);
 
   port = &Serial1; // Arduino Yun
@@ -102,17 +109,19 @@ void setup() {
 
   //EXTERNAL AREF Voltage should be 1.134V
   analogReference(EXTERNAL);
-  
+
   //wait for UBOOT finish
   port->begin(115200);
+  Serial.println(F("CHECKING UBOOT"));
   do {
     while (port->available() > 0) {
       port->read();
     }
 
-    delay(2000);
+    Serial.println(F("WAITING FOR UBOOT"));
+    delay(30000);
   } while (port->available() > 0);
-//  port->begin(9600);
+  //  port->begin(9600);
 
   //fill data array with zeros
   for (int i = 0; i < RAWDATASIZE; i++) {
@@ -150,13 +159,17 @@ void setup() {
   myPID.SetSampleTime(WindowSize * 1000);
   //turn the PID on
   myPID.SetMode(AUTOMATIC);
-  
+
   //set all values in last temperatures array to -1
   resetLastTemperaturesArray();
 
   //Autotune
   aTune.SetControlType(1); //1=PID, 0=PI
 
+  //relais
+  digitalWrite(heaterPin, HIGH);
+
+  //LED
   digitalWrite(ledPin, LOW);
 }
 
@@ -241,45 +254,45 @@ void AutoTuneHelper(boolean start)
     myPID.SetMode(ATuneModeRemember);
 }
 
-int getMaxValue(int theArray[]){
+int getMaxValue(int theArray[]) {
   int maxValue = 0;
-  for(int i = 0; i < LASTANALYSISSIZE; i++){
+  for (int i = 0; i < LASTANALYSISSIZE; i++) {
     if (theArray[i] > -1) {
-      maxValue = max(theArray[i],maxValue);
+      maxValue = max(theArray[i], maxValue);
     }
   }
   return maxValue;
 }
 
-int getMinValue(int theArray[]){
+int getMinValue(int theArray[]) {
   int minValue = 1023;
-  for(int i = 0; i < LASTANALYSISSIZE; i++){
-    if (theArray[i] > -1){
-      minValue = min(theArray[i],minValue);
+  for (int i = 0; i < LASTANALYSISSIZE; i++) {
+    if (theArray[i] > -1) {
+      minValue = min(theArray[i], minValue);
     }
   }
   return minValue;
 }
 
-float getAverageValue(int theArray[]){
+float getAverageValue(int theArray[]) {
   int totalSum = 0;
   int totalCount = 0;
 
-  for(int i = 0; i < LASTANALYSISSIZE; i++){
-    if (theArray[i] > -1){
+  for (int i = 0; i < LASTANALYSISSIZE; i++) {
+    if (theArray[i] > -1) {
       totalSum += theArray[i];
       totalCount++;
     }
   }
-  
+
   return (float) totalSum / (float) totalCount;
 }
 
-void resetLastTemperaturesArray(){
-  for(int i = 0; i < LASTANALYSISSIZE; i++){
+void resetLastTemperaturesArray() {
+  for (int i = 0; i < LASTANALYSISSIZE; i++) {
     lastTemperatures[i] = -1;
   }
-  
+
   lastTemperaturesSize = 0;
 }
 
@@ -290,15 +303,21 @@ void loop() {
     last_cmd = port->read();
   }
 
+  //switch relais if necessary
+  if (relaisIsOn && millis() >= onUntilMillis) {
+    digitalWrite(heaterPin, HIGH);
+    relaisIsOn = false;
+  }
+
   //Compute commands
   if (last_cmd != -1)
   {
     //Serial.println(port->available());
     if (last_cmd == 'P')
     {
-      if (port->available() >= 48){
+      if (port->available() >= 48) {
         port->readBytes((char *)pPidData, 48);
-  
+
         Serial.print(F("Received new PID values: Setpoint ")); Serial.print(*pPid_settemp);
         Serial.print(F("C - P")); Serial.print(*pPid_p);
         Serial.print(F(" - I"));  Serial.print(*pPid_i);
@@ -311,12 +330,12 @@ void loop() {
         Serial.print(F("Received new Thermo values: MIN ")); Serial.print(*range_min);
         Serial.print(F(" - MAX "));  Serial.print(*range_max);
         Serial.print(F(" - REFVOLT ")); Serial.println(*referenceVoltage);
-  
+
         //safe to PID controller
         Setpoint = *pPid_settemp;
         //set tuning, depending on which parameter set we are running
-        if (pidNear == true){
-              myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
+        if (pidNear == true) {
+          myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
         } else {
           myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
         }
@@ -327,16 +346,16 @@ void loop() {
         last_cmd = -1;
       }
     }
-    else if (last_cmd == 'Q'){
-      if (port->available() >= 16){
+    else if (last_cmd == 'Q') {
+      if (port->available() >= 16) {
         //sending more PID parameters in a different string, because the (default) serial buffer is 64 bytes large
         port->readBytes((char *)pPidData + 48, 16);
-        
+
         Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
         Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
         Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
         Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
-  
+
         if (tuning) {
           Serial.println(F("Tuning parameters reset. Restarting tuning."));
           changeAutoTune(); //first call will cancel the tuning
@@ -347,7 +366,7 @@ void loop() {
     }
     else if (last_cmd == 'O')
     {
-      if (port->available() >= 1){
+      if (port->available() >= 1) {
         //only switch LED on and off
         int inByte = port->read();
         if (inByte == '0') {
@@ -355,12 +374,12 @@ void loop() {
         } else if (inByte == '1') {
           digitalWrite(ledPin, HIGH);
         }
-  
+
         last_cmd = -1;
       }
     }
     else if (last_cmd == 'A') {
-      if (port->available() >= 1){
+      if (port->available() >= 1) {
         //only switch LED on and off
         int inByte = port->read();
         //switch tuning, if value received is different from the tuning state
@@ -369,7 +388,7 @@ void loop() {
       }
     }
     else if (last_cmd == 'X') {
-      if (port->available() >= 1){
+      if (port->available() >= 1) {
         //only switch Sound on and off
         int inByte = port->read();
         //switch tuning, if value received is different from the tuning state
@@ -391,21 +410,48 @@ void loop() {
       myPID.ResetIterm();
       last_cmd = -1;
     }
+    //toggle PID (was toggle, now switch on if 1, off if 0)
     else if (last_cmd == 'T') {
-      //first switch off autotune
-      if (tuning) changeAutoTune();
-      if (pidStarted){
-        pidStarted = false;
-        Serial.println(F("PID turned off"));
-      } else {
-        if (pidSettingsReceived) {
-          pidStarted = true;
-          Serial.println(F("PID turned on"));
-        } else {
-          Serial.println(F("PID settings not yet received. Still turned off"));
+      if (port->available() >= 1) {
+        int inByte = port->read();
+        if (inByte == '0') {
+          //switch off
+          if (pidStarted == true) {
+            //first switch off autotune
+            if (tuning) changeAutoTune();
+            pidStarted = false;
+            Serial.println(F("PID turned off"));
+          }
+        } else if (inByte == '1') {
+          //switch on
+          if (pidSettingsReceived && pidStarted == false) {
+            pidStarted = true;
+            Serial.println(F("PID turned on"));
+          } else {
+            Serial.println(F("PID settings not yet received. Still turned off"));
+          }
         }
       }
       last_cmd = -1;
+    }
+    //power socket switch (for safety reasons only for 5 seconds
+    else if (last_cmd == 'S') {
+      if (port->available() >= 1) {
+        int inByte = port->read();
+        if (inByte == '0') {
+          Serial.println(F("POWER OFF"));
+          onUntilMillis = 0;
+          relaisIsOn = false;
+          digitalWrite(heaterPin, HIGH);
+        } else {
+          Serial.println(F("POWER ON FOR 5 SECONDS"));
+          //switch on relais from now on
+          onUntilMillis = millis() + (int) 5000;
+          relaisIsOn = true;
+          digitalWrite(heaterPin, LOW);
+        }
+        last_cmd = -1;
+      }
     }
     //empty one char from buffer
     else {
@@ -421,15 +467,15 @@ void loop() {
   if (millis() - lastTime >= sendDelayMillis) {
     sendCounter++;
     lastTime = millis();
-    
+
     //send temperature value
     getAnalog(A0, 0);
-    
+
     //analyse last temperatures every N runs (depending on near/far analysis window size)
     if (sendCounter % analysisDelay == 0) {
       //move all values to 1 above, so that we can save to the 0 value
-      for(int i = LASTANALYSISSIZE - 1; i>=0; i--){
-        lastTemperatures[i+1] = lastTemperatures[i];
+      for (int i = LASTANALYSISSIZE - 1; i >= 0; i--) {
+        lastTemperatures[i + 1] = lastTemperatures[i];
       }
       lastTemperatures[0] = currentTemperature1023;
       lastTemperaturesSize++;
@@ -450,10 +496,10 @@ void loop() {
 
         // -------- PID AND AUTOTUNE --------
         Input = calculateTemperature(currentTemperature1023);
-        
+
         // See if we have to change from near to far PID parameter set
         //but only if we have filled the array
-        if (lastTemperaturesSize > LASTANALYSISSIZE){
+        if (lastTemperaturesSize > LASTANALYSISSIZE) {
           float theMax = calculateTemperature(getMaxValue(lastTemperatures));
           float theMin = calculateTemperature(getMinValue(lastTemperatures));
           float theAverage = calculateTemperature(getAverageValue(lastTemperatures));
@@ -562,9 +608,13 @@ void loop() {
           Serial.println(F(", sending signal "));
           port->print(F("P"));
           port->println(Output);
+
+          //switch on relais from now on
+          onUntilMillis = millis() + (int) Output;
+          relaisIsOn = true;
+          digitalWrite(heaterPin, LOW);
         } else {
           Serial.println(F(", output too small "));
-        
         }
       }
 
@@ -581,7 +631,7 @@ void loop() {
   rawDataIdx %= RAWDATASIZE;
 
   //do alarm
-  if (alarmTriggered){
+  if (alarmTriggered) {
     if (fps == 0) {
       digitalWrite(soundPin, HIGH);
       digitalWrite(ledPin, HIGH);

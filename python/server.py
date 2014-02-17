@@ -63,11 +63,16 @@ pid_near_kd = 0
 pid_nearfardelta = 0
 pid_nearfartimewindow = 0
 pid_settemp = 0
+pid_started = False
+pid_settings_sent = False
 wemoIp = ""
+useWemo = False
 aTuneStep = 0
 aTuneNoise = 0
 aTuneStartValue = 0
 aTuneLookBack = 0
+
+sendPushover = True
 
 #Pushover
 pushoverMessageCount = 0; #limit the number of message calls while running
@@ -124,6 +129,16 @@ class McuProtocol(LineReceiver):
 			print "Sending Alarm:", payload
 		self.transport.write("X" + payload)
 		
+	@exportRpc("manualPowerSwitch")
+	def manualPower(self, status):
+		if status:
+			payload = '1'
+		else:
+			payload = '0'
+		if self.wsMcuFactory.debugSerial:
+			print "Sending Power:", payload
+		self.transport.write("S" + payload)
+		
 	@exportRpc("setTuning")
 	def sendTuningCommand(self, doStart):
 		if doStart:
@@ -142,10 +157,24 @@ class McuProtocol(LineReceiver):
 		self.transport.write("R")
 		
 	@exportRpc("togglePid")
-	def sendTogglePidSignal(self):
-		if self.wsMcuFactory.debugSerial:
-			print "Sending toggle PID signal to arduino"
-		self.transport.write("T")
+	def sendTogglePidSignal(self, turnOn):
+		if turnOn:
+			if (pid_settings_sent):
+				if self.wsMcuFactory.debugSerial:
+					print "Sending switch ON PID signal to arduino"
+				pid_started = True
+				payload = '1'
+			else:
+				if self.wsMcuFactory.debugSerial:
+					print "Ignoring request: No parameters sent yet"
+				return False
+		else:
+			if self.wsMcuFactory.debugSerial:
+				print "Sending switch OFF PID signal to arduino"
+			pid_started = False
+			payload = '0'
+		self.transport.write("T" + payload)
+		return True
 		
 	@exportRpc("getEntireDB")
 	def readTemperatureDB(self, numberTotal):
@@ -217,9 +246,8 @@ class McuProtocol(LineReceiver):
 		set_max = newTempEnd
 		#also send these values to the arduino, since the PID will only be possible with the right temperature
 		if self.wsMcuFactory.debugSerial:
-			print "Sending PID and THERMO settings to Arduino: " + str(newTempEnd)
-		binaryPid = pack('<ffffffffffffffff', pid_settemp, pid_p, pid_i, pid_d, pid_near_kp, pid_near_ki, pid_near_kd, pid_nearfardelta, pid_nearfartimewindow, set_min, set_max, referenceVoltage, aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack)
-		self.transport.write("P" + binaryPid)
+			print "Sending PID and THERMO settings to Arduino: " + str(newRefVolt)
+		sendPidSettings(self)
 		return True
 
 	@exportRpc("newPIDSettings")
@@ -252,16 +280,8 @@ class McuProtocol(LineReceiver):
 		thermoSettings = (newWemoIP, newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newPID_near_kp, newPID_near_ki, newPID_near_kd, newPID_nearfardelta, newPID_nearfartimewindow, newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
 		sq3cur = sq3con.cursor()
 		sq3cur.execute("UPDATE thermosetup SET wemo_ip = ?, wemo_temp_max = ?, pid_kp = ?, pid_ki = ?, pid_kd = ?, pid_near_kp = ?, pid_near_ki = ?, pid_near_kd = ?, pid_nearfardelta = ?, pid_nearfartimewindow = ?, aTuneStep = ?, aTuneNoise = ?, aTuneStartValue = ?, aTuneLookBack = ?", thermoSettings)
-		if self.wsMcuFactory.debugSerial:
-			print "Sending PID and THERMO settings to Arduino: " + str(newPidSettemp)
-		binaryPid = pack('<ffffffffffff', newPidSettemp, newPID_kp, newPID_ki, newPID_kd, newPID_near_kp, newPID_near_ki, newPID_near_kd, newPID_nearfardelta, newPID_nearfartimewindow, set_min, set_max, referenceVoltage)
-		self.transport.write("P" + binaryPid)
-		binaryPid = pack('<ffff', newATuneStep, newATuneNoise, newATuneStartValue, newATuneLookBack)
-		#The rest needs to be sent later, because the default Arduino buffersize is 64
-		#Wait 300ms before sending
-		reactor.callLater(.3, sentAutotuneValuesToArduino, self, binaryPid)
 		#kill old  PHP process, if IP has changed
-		if (wemoIp != newWemoIP):
+		if (useWemo and wemoIp != newWemoIP):
 			if (p):
 				if (p.poll() == None):
 					p.kill()
@@ -280,6 +300,11 @@ class McuProtocol(LineReceiver):
 		aTuneNoise = newATuneNoise
 		aTuneStartValue = newATuneStartValue
 		aTuneLookBack = newATuneLookBack
+
+		if self.wsMcuFactory.debugSerial:
+			print "Sending PID and THERMO settings to Arduino: " + str(newPidSettemp)
+		sendPidSettings(self)
+
 		return True
 
 	def connectionMade(self):
@@ -301,34 +326,13 @@ class McuProtocol(LineReceiver):
 				pSkipped += 1
 				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSkipped", pSkipped)
 				if (pSkipped == 10):
-					if (pushoverMessageCount < pushoverMessageMax):
-						conn = httplib.HTTPSConnection("api.pushover.net:443")
-						conn.request("POST", "/1/messages.json",
-							urllib.urlencode({
-								"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
-								"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
-								"priority": "1",
-								"sound": "falling",
-								"message": "Socket was not responsive for 10 times in a row",}), { "Content-type": "application/x-www-form-urlencoded" })
-						pushoverMessageCount += 1
-					elif (pushoverMessageCount == pushoverMessageMax):
-						conn = httplib.HTTPSConnection("api.pushover.net:443")
-						conn.request("POST", "/1/messages.json",
-							urllib.urlencode({
-								"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
-								"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
-								"priority": "2",
-								"retry": 3600,
-								"expire": 6000,
-								"sound": "siren",
-								"message": "Socket unresponsive. Too many warnings sent. This will be the last warning until server reset.",}), { "Content-type": "application/x-www-form-urlencoded" })
-						pushoverMessageCount += 1
+					sendPushoverMessage("Socket was not responsive for 10 times in a row")
 			else:
-				if (superError != True):
+				if (useWemo and superError != True):
 					p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
 					pSkipped = 0
 					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
-				else:
+				elif (superError == True):
 					if self.wsMcuFactory.debugSerial:
 						print "IGNORING PID. SUPER ERROR TRIGGERED."
 
@@ -369,46 +373,77 @@ class McuProtocol(LineReceiver):
 					if self.wsMcuFactory.debugSerial:
 						print "sqlite error: ", msg
 					
-				
+				#ALARM
 				if (superError == False and data[1] > 501):
-					conn = httplib.HTTPSConnection("api.pushover.net:443")
-					conn.request("POST", "/1/messages.json",
-						urllib.urlencode({
-							"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
-							"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
-							"priority": "2",
-							"retry": 3600,
-							"expire": 6000,
-							"sound": "siren",
-							"message": "Raw value above 501 was received. No further processing will be done. Server is continuing but ignoring PID calls.",}), { "Content-type": "application/x-www-form-urlencoded" })
-					pushoverMessageCount += 1
+					sendPushoverMessage("Raw value above 501 was received. No further processing will be done. Server is continuing but ignoring PID calls.",2)
 					superError = True
 					
 					#Send alarm
 					self.transport.write("X1")
+					#Send PID off
+					self.transport.write("T0")
 					
-					if (p):
-						if (p.poll() == None):
-							p.kill()
-					#Sending shutoff signal
-					p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoOff.php',str(wemoIp)])
-					print "PHP wemo OFF called"
-					#reactor.callFromThread(reactor.stop)
+					if (useWemo == True):
+						if (p):
+							if (p.poll() == None):
+								p.kill()
+						#Sending shutoff signal
+						p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoOff.php',str(wemoIp)])
+						print "PHP wemo OFF called"
 				
 			except ValueError:
 				log.err('Unable to parse value %s' % line)
 
+def sendPidSettings(self):
+	global pid_started, pid_settings_sent
+	binaryPid = pack('<ffffffffffff', pid_settemp, pid_p, pid_i, pid_d, pid_near_kp, pid_near_ki, pid_near_kd, pid_nearfardelta, pid_nearfartimewindow, set_min, set_max, referenceVoltage)
+	self.transport.write("P" + binaryPid)
+	binaryPid = pack('<ffff', aTuneStep, aTuneNoise, aTuneStartValue, aTuneLookBack)
+	#The rest needs to be sent later, because the default Arduino buffersize is 64
+	#Wait 300ms before sending
+	reactor.callLater(.3, sentAutotuneValuesToArduino, self, binaryPid)
+	pid_started = True
+	pid_settings_sent = True
+
+def sendPushoverMessage(message, priority):
+	global pushoverMessageCount
+
+	if (sendPushover == False):
+		return
+		
+	if (pushoverMessageCount > pushoverMessageMax):		
+		return False
+
+	if (priority == None):
+		priority = -1
+	
+	try:
+		conn = httplib.HTTPSConnection("api.pushover.net:443")
+		conn.request("POST", "/1/messages.json",
+			urllib.urlencode({
+				"token": "aPHxby54Su8bXMLMCYY4ESapXBnLmS",
+				"user": "uBdVQW8BKVXnF9vVdhUSpnVcVKWsSv",
+				"priority": priority,
+				"retry": 3600,
+				"expire": 6000,
+				"sound": "siren",
+				"message": message}), { "Content-type": "application/x-www-form-urlencoded" })
+		pushoverMessageCount += 1
+	except:
+		if wsMcuFactory.debugSerial:
+			print "Could not send pushover message"
+			
+
 ## Kais shutdown procedure
 def sqlite3Close():
 	global p
-	if (p):
+	if (useWemo and p):
 		#TODO: wait for process to finish. then close the process after a while if not finished and run the php stop script
 		if (p.poll() == None):
 			p.kill()
 			#Sending shutoff signal
 		p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoOff.php',str(wemoIp)])
 		print "PHP wemo OFF called"
-	print "PHP process was closed at shutdown time"
 	sq3con.close()
 	print "Database closed successfully"
 	

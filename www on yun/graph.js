@@ -16,9 +16,14 @@ function resetPid(){
 	sess.call("rpc:resetPid").always(ab.log);
 }
 
-function togglePid(){
-	console.log("sending toggle pid signal");
-	sess.call("rpc:togglePid").always(ab.log);
+function switchPid(status){
+	console.log("sending pid signal" + status);
+	sess.call("rpc:togglePid", status).always(ab.log);
+}
+
+function controlSocket(status){
+	console.log("sending powersocket signal" + status);
+	sess.call("rpc:manualPowerSwitch", status).always(ab.log);
 }
 
 function autoTuneDataReceived(topicUri, aTuneData) {
