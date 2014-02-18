@@ -129,7 +129,7 @@ void setup() {
     }
 
     Serial.println(F("WAITING FOR UBOOT"));
-    //delay(30000);
+    delay(30000);
   } while (port->available() > 0);
   //  port->begin(9600);
 
@@ -231,7 +231,11 @@ int median(int array[]) {
 
 void getAnalog(int pin, int id) {
   if (thermoMax){
-    currentTemperature1023 = revertTemperature(thermocouple.readCelsius());
+    float currentC = thermocouple.readCelsius();
+    Serial.print(F("MEASURED: "));
+    Serial.print(currentC);
+    Serial.println(F(" C"));
+    currentTemperature1023 = revertTemperature(currentC);
   } else {
     currentTemperature1023 = median(rawData);
   }
