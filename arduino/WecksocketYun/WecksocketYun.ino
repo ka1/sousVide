@@ -645,6 +645,8 @@ void loop() {
           digitalWrite(heaterPin, LOW);
         } else {
           Serial.println(F(", output too small "));
+          port->print(F("N"));
+          port->println(Output);
         }
       }
 

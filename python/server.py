@@ -319,7 +319,7 @@ class McuProtocol(LineReceiver):
 	def lineReceived(self, line):
 	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
 		global p, pSkipped, sqliteErrorCount, pushoverMessageCount, superError
-		if (line.startswith("P")):
+		if (line.startswith("P") or line.startswith("N")):
 			pidLength = int(float(line[1:]))
 			if self.wsMcuFactory.debugSerial:
 				print "PID detected: " + str(round(pidLength / 1000.0,4)) + " seconds"
@@ -332,9 +332,11 @@ class McuProtocol(LineReceiver):
 					sendPushoverMessage("Socket was not responsive for 10 times in a row")
 			else:
 				if (useWemo and superError != True):
-					p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
-					pSkipped = 0
-					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
+					#send only of P, N is only for information
+					if (line.startswith("P")):
+						p = Popen(['/opt/usr/bin/php-cli','-c','/opt/etc/php.ini','/mnt/sda1/wemo/wemoTimed.php',str(wemoIp),str(pidLength)])
+						pSkipped = 0
+						self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
 				elif (useWemo == False):
 					evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'pidLength': pidLength}
 					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSentRelais", evt)

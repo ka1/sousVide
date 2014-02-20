@@ -46,6 +46,17 @@ body {
 	fill:red;
 }
 
+.hoverCirclePid{
+	stroke: red;
+	fill: none;
+	opacity: .5;
+}
+
+.hoverTextPid {
+	text-anchor: end;
+	opacity: .5;
+}
+
 .overlay {
   fill: none;
   pointer-events: all;

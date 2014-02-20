@@ -364,7 +364,10 @@ window.onload = function () {
 var	hoverLineX, //X-part of crosshair
 	hoverLineY, //Y-part of crosshair
 	hoverLayer, //group containing circle, and both texts in the center of the crosshair
-	hoverTextDate, //date next to crosshair 
+	hoverLayerPid, //group containing circle and data for PID line
+	hoverTextPidLength, //pid length next to circle
+	hoverTextDate, //date next to crosshair
+	hoverTextTemperature, //temperature next to crosshair
 	currentTemperatureText, //temperature next to crosshair
 	runningBrush = true,
 	graphData = []; //the data
@@ -411,6 +414,7 @@ var line2 = d3.svg.line()
 	.y(function(d) { return y2(d.Temperatur); });
 
 var linePid = d3.svg.line()
+	.interpolate("basis") //basis, linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
 	.x(function(d) { return x(d.Zeitpunkt); })
 	.y(function(d) { return yPid(d.pidLength); });
 
@@ -458,6 +462,20 @@ hoverLayer.append("circle")
     .attr("class", "hoverCircle")
     .attr("r", 4.5);
 
+hoverLayerPid = graphMain.append("g")
+	.style("display", "none");
+
+hoverLayerPid.append("circle")
+	.attr("class", "hoverCirclePid")
+	.attr("r", 6);
+
+hoverTextPidLength = hoverLayerPid.append("text")
+	.attr('y',-15)
+	.attr('x',-5)
+	.attr('dy','1em')
+	.attr('class', 'hoverTextPid')
+	.text('xyz');
+
 //hover Text
 hoverTextDate = hoverLayer.append('text')
 	.attr('y',5)
@@ -477,8 +495,8 @@ graphMain.append("rect")
     .attr("class", "overlay")
     .attr("width", width)
     .attr("height", height)
-    .on("mouseover", function() { hoverLayer.style("display", null); hoverLineX.style("display" , null); hoverLineY.style("display" , null);})
-    .on("mouseout", function() { hoverLayer.style("display", "none"); hoverLineX.style("display", "none"); hoverLineY.style("display", "none");})
+    .on("mouseover", function() { hoverLayer.style("display", null); hoverLayerPid.style("display",null); hoverLineX.style("display" , null); hoverLineY.style("display" , null);})
+    .on("mouseout", function() { hoverLayer.style("display", "none"); hoverLayerPid.style("display","none"); hoverLineX.style("display", "none"); hoverLineY.style("display", "none");})
     .on("mousemove", mousemove);
 
 var currentTemperatureGroup = graphMain.append("g")
@@ -519,7 +537,7 @@ function setRange(){
 	y.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
 	x2.domain(x.domain());
 	y2.domain(y.domain());
-	yPid.domain([0,8000]);
+	yPid.domain([-500,10000]);
 }
 
 function drawGraph(){
@@ -599,22 +617,44 @@ function drawGraph(){
 }
 
 function mousemove(){
+	if (graphData.length == 0){
+		return;
+	}
+	
     var x0 = x.invert(d3.mouse(this)[0]),
 		i = bisectDate(graphData, x0, 1),
 		d0 = graphData[i - 1],
 		d1 = graphData[i],
-		d = x0 - d0.Zeitpunkt > d1.Zeitpunkt - x0 ? d1 : d0,
-		transX = x(d.Zeitpunkt),
-		transY = y(d.Temperatur);
-    hoverLayer.attr("transform", "translate(" + transX + "," + transY + ")");
-    
-    hoverLineX.attr('x1', transX).attr('x2', transX);
-    hoverLineY.attr('y1', transY).attr('y2', transY);
+		d = x0 - d0.Zeitpunkt > d1.Zeitpunkt - x0 ? d1 : d0;
+	if (d != undefined) {
+		var transX = x(d.Zeitpunkt),
+			transY = y(d.Temperatur);
+			
+	    hoverLayer.attr("transform", "translate(" + transX + "," + transY + ")");
+	    
+	    hoverLineX.attr('x1', transX).attr('x2', transX);
+	    hoverLineY.attr('y1', transY).attr('y2', transY);
+	
+	    //change Text
+	    var format = d3.time.format("%H:%M:%S");
+	    hoverTextDate.text(format(d.Zeitpunkt));
+	    hoverTextTemperature.text(d.Temperatur + "°C");
+	}
 
-    //change Text
-    var format = d3.time.format("%H:%M:%S");
-    hoverTextDate.text(format(d.Zeitpunkt));
-    hoverTextTemperature.text(d.Temperatur + "°C");
+    if (pidGraphData.length > 0){
+		//the same for the pid data
+		var iPid = bisectDate(pidGraphData, x0, 1),
+			d0Pid = pidGraphData[iPid - 1];
+			d1Pid = pidGraphData[iPid];
+			dPid = x0 - d0Pid.Zeitpunkt > d1.Zeitpunkt - x0 ? d1Pid : d0Pid;
+		if (dPid != undefined){
+			var transXPid = x(dPid.Zeitpunkt),
+				transYPid = yPid(dPid.pidLength);
+			
+			hoverLayerPid.attr("transform", "translate(" + transXPid + "," + transYPid + ")");
+			hoverTextPidLength.text(dPid.pidLength + "ms");
+		}
+    }    
 }
 
 function brushFunction() {
