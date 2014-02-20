@@ -28,6 +28,13 @@ body {
   stroke:black;
 }
 
+.pidLine {
+	fill:none;
+	stroke-width: 1px;
+	stroke:#999;
+	stroke-dasharray:3,3;
+}
+
 .hoverLine {
 	stroke:#aaa;
 	stroke-dasharray:3,7;

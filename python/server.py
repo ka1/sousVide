@@ -336,7 +336,8 @@ class McuProtocol(LineReceiver):
 					pSkipped = 0
 					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSent", pidLength)
 				elif (useWemo == False):
-					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSentRelais", pidLength)
+					evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'pidLength': pidLength}
+					self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#PIDOutputSentRelais", evt)
 				elif (superError == True):
 					if self.wsMcuFactory.debugSerial:
 						print "IGNORING PID. SUPER ERROR TRIGGERED."

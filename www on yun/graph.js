@@ -47,8 +47,15 @@ function pidSent(topicUri, pidLength) {
 	console.log("PID sent to WEMO: " + pidLength + "ms");
 }
 
-function pidSentRelais(topicUri, pidLength) {
-	console.log("PID sent via relais: " + pidLength + "ms");
+function pidSentRelais(topicUri, pidData) {
+	console.log("PID sent via relais: " + pidData.pidLength + "ms");
+
+	pidData.Zeitpunkt = parseDate(pidData.Zeitpunkt);
+	
+	pidGraphData.push(pidData);
+	//draw new graphs
+	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
+
 }
 
 //function receives WS new data event and draws the single datum
@@ -77,13 +84,14 @@ function newRawDataReceived(topicUri, singleDatum) {
 	}
 	
 	//draw new graphs
-	graphMain.select("path").datum(graphData).attr("d", line);
+	graphMain.select("path.line").datum(graphData).attr("d", line);
+	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
-	graphBrush.select("path").datum(graphData).attr("d", line2);
+	graphBrush.select("path.lineContext").datum(graphData).attr("d", line2);
 	graphBrush.select(".x.axis").call(xAxis2);
 	
-	//move settemp lines vertically
+	//move settemp lines vertically (always need to move because scale might have changed)
 	graphMain.select(".rightOnTemp").attr("transform","translate(0," + y(pidSetTemp) + ")");
 	graphMain.select("#blurTop").attr("transform","translate(0," + y(pidSetTemp + pidSetTempBlur) + ")");
 	graphMain.select("#blurBottom").attr("transform","translate(0," + y(pidSetTemp - pidSetTempBlur) + ")");
@@ -101,10 +109,11 @@ function updateGraphDrawing(){
 	y.domain(y2.domain()); //set main window y scale to brush window scale
 	
 	//draw new graphs
-	graphMain.select("path").datum(graphData).attr("d", line);
+	graphMain.select("path.line").datum(graphData).attr("d", line);
+	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
-	graphBrush.select("path").datum(graphData).attr("d", line2);
+	graphBrush.select("path.lineContext").datum(graphData).attr("d", line2);
 	graphBrush.select(".x.axis").call(xAxis2);
 }
 
@@ -359,6 +368,7 @@ var	hoverLineX, //X-part of crosshair
 	currentTemperatureText, //temperature next to crosshair
 	runningBrush = true,
 	graphData = []; //the data
+	pidGraphData = []; //the pid runtime data
 
 var graphDrawn = false; //is the graph drawn already
 
@@ -377,7 +387,9 @@ var margin = {top: 10, right: 10, bottom: 100, left: 40},
 var x = d3.time.scale().range([0, width]),
 	x2 = d3.time.scale().range([0, width]),
 	y = d3.scale.linear().range([height, 0]),
-	y2 = d3.scale.linear().range([height2, 0]);
+	y2 = d3.scale.linear().range([height2, 0]),
+	yPid = d3.scale.linear().range([height, 0]);
+	
 
 var xAxis = d3.svg.axis().scale(x).orient("bottom"),
 	xAxis2 = d3.svg.axis().scale(x2).orient("bottom"),
@@ -397,6 +409,10 @@ var line = d3.svg.line()
 var line2 = d3.svg.line()
 	.x(function(d) { return x2(d.Zeitpunkt); })
 	.y(function(d) { return y2(d.Temperatur); });
+
+var linePid = d3.svg.line()
+	.x(function(d) { return x(d.Zeitpunkt); })
+	.y(function(d) { return yPid(d.pidLength); });
 
 //plus minus how much is acceptable? show that in the graph
 var pidSetTempBlur = .5;
@@ -503,6 +519,7 @@ function setRange(){
 	y.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
 	x2.domain(x.domain());
 	y2.domain(y.domain());
+	yPid.domain([0,8000]);
 }
 
 function drawGraph(){
@@ -513,7 +530,13 @@ function drawGraph(){
 		.datum(graphData)
 		.attr("class", "line")
 		.attr("clip-path", "url(#clip)")
-		.attr("d", line);	
+		.attr("d", line);
+	
+	graphMain.append("path")
+		.datum(pidGraphData)
+		.attr("class", "pidLine")
+		.attr("clip-path", "url(#clip)")
+		.attr("d", line);
 	
 	//x Achse
 	graphMain.append("g")
@@ -596,7 +619,8 @@ function mousemove(){
 
 function brushFunction() {
 	x.domain(brush.empty() ? x2.domain() : brush.extent());
-	graphMain.select("path").attr("d", line);
+	graphMain.select("path.line").attr("d", line);
+	graphMain.select("path.pidLine").attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	runningBrush = false; //disable the running brush
 }
