@@ -97,6 +97,11 @@ class Serial2WsOptions(usage.Options):
 def sentAutotuneValuesToArduino(context, binaryPid):
 	context.transport.write("Q" + binaryPid)
 
+def calculateTemperature(rawTemp):
+  returnTemp = (rawTemp / 1023.0) * referenceVoltage;
+  returnTemp = (set_min) + (returnTemp * (set_max - set_min));
+  return round(returnTemp * 10,0) / 10;
+
 ## MCU protocol
 ##
 class McuProtocol(LineReceiver):
@@ -314,12 +319,10 @@ class McuProtocol(LineReceiver):
 	def lineReceived(self, line):
 	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
 		global p, pSkipped, sqliteErrorCount, pushoverMessageCount, superError
-		if self.wsMcuFactory.debugSerial:
-			print "Serial RX:", line
 		if (line.startswith("P")):
 			pidLength = int(float(line[1:]))
 			if self.wsMcuFactory.debugSerial:
-				print "PID detected: " + str(pidLength / 1000) + " seconds"
+				print "PID detected: " + str(round(pidLength / 1000.0,4)) + " seconds"
 			if (p and (p.poll() == None)):
 				#TODO: manage autoexit. run a php-shutdown script. then maybe count the number of failures and do a total exit after 5 or so?
 				print "ALERT. PROCESS STILL RUNNING. SKIPPING THIS PROCESS RUN. SKIPPED " + str(pSkipped)
@@ -339,6 +342,9 @@ class McuProtocol(LineReceiver):
 						print "IGNORING PID. SUPER ERROR TRIGGERED."
 
 		elif (line.startswith("A")):
+			if self.wsMcuFactory.debugSerial:
+				print "Autotune (serial RX:", line, ")"
+
 			try:
 				autoTuneString = str(line[1:])
 				autoTuneData = [float(x) for x in autoTuneString.split()]
@@ -347,6 +353,9 @@ class McuProtocol(LineReceiver):
 			except ValueError:
 				log.err('Unable to parse value %s' % line)
 		elif (line.startswith("F")):
+			if self.wsMcuFactory.debugSerial:
+				print "Near/far serial RX:", line
+
 			nearFarChange = line[1:]
 			if self.wsMcuFactory.debugSerial:
 				print "Changing between near and far: " + nearFarChange
@@ -374,10 +383,15 @@ class McuProtocol(LineReceiver):
 					sqliteErrorCount += 1
 					if self.wsMcuFactory.debugSerial:
 						print "sqlite error: ", msg
+				
+				#Show temperature
+				calcTemp = calculateTemperature(data[1])
+				if self.wsMcuFactory.debugSerial:
+					print "Temperature: ", calcTemp, " (" , data[1], ")"
 					
 				#ALARM
-				if (superError == False and data[1] > 501):
-					sendPushoverMessage("Raw value above 501 was received. No further processing will be done. Server is continuing but ignoring PID calls.",2)
+				if (superError == False and calcTemp > 80):
+					sendPushoverMessage("Temperature above 80C was received. No further processing will be done. Server is continuing but ignoring PID calls.",2)
 					superError = True
 					
 					#Send alarm
@@ -394,6 +408,8 @@ class McuProtocol(LineReceiver):
 						print "PHP wemo OFF called"
 				
 			except ValueError:
+				if self.wsMcuFactory.debugSerial:
+					print "Could not parse serial RX:", line
 				log.err('Unable to parse value %s' % line)
 
 def sendPidSettings(self):

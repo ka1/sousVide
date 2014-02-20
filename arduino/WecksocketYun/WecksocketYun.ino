@@ -312,11 +312,17 @@ float getAverageValue(int theArray[]) {
 }
 
 void resetLastTemperaturesArray() {
+  resetLastTemperaturesArray(-1, true);
+}
+
+void resetLastTemperaturesArray(int presetValue, bool resetLastTemperatureSize) {
   for (int i = 0; i < LASTANALYSISSIZE; i++) {
-    lastTemperatures[i] = -1;
+    lastTemperatures[i] = presetValue;
   }
 
-  lastTemperaturesSize = 0;
+  if (resetLastTemperatureSize){
+    lastTemperaturesSize = 0;
+  }
 }
 
 void loop() {
@@ -537,7 +543,8 @@ void loop() {
 
               pidNear = true;
               myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
-              resetLastTemperaturesArray();
+              //reset and fill with the current temperature, so that we can immediately switch back to far, instead of waiting for x minutes before array is filled
+              resetLastTemperaturesArray(currentTemperature1023, false);
             }
           }
           //if already in near set
