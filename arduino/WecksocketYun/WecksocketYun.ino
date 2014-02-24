@@ -1,3 +1,6 @@
+//1 if using the max31855 thermocouple, set 0 otherwise
+#define THERMOMAX 1
+
 ///////////////////////////////////////////////////////////////////////////////
 //
 //  Copyright 2012-2013 Tavendo GmbH
@@ -26,10 +29,8 @@ int thermoCLK = 7;
 
 const int ledPin = 13;
 const int soundPin = 8;
-const int heaterPin = 2;
+const int heaterPin = 12;
 int last = 0;
-
-bool thermoMax = true; //true if using the max31855 thermocouple
 
 HardwareSerial *port;
 
@@ -42,7 +43,13 @@ float temp_range_max;
 float temp_range_min;
 
 //define the size of the median buffer
-#define RAWDATASIZE 100
+#if THERMOMAX
+  #define RAWDATASIZE 10
+  bool thermoMax = true;
+#else
+  #define RAWDATASIZE 100
+  bool thermoMax = false;
+#endif
 #define RAWDATAMEDIANIDX RAWDATASIZE / 2
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
@@ -231,11 +238,7 @@ int median(int array[]) {
 
 void getAnalog(int pin, int id) {
   if (thermoMax){
-    float currentC = thermocouple.readCelsius();
-    Serial.print(F("MEASURED: "));
-    Serial.print(currentC);
-    Serial.println(F(" C"));
-    currentTemperature1023 = revertTemperature(currentC);
+    currentTemperature1023 = revertTemperature(median(rawData) / 100.0);
   } else {
     currentTemperature1023 = median(rawData);
   }
@@ -658,7 +661,11 @@ void loop() {
   }
 
   //save last value
-  rawData[rawDataIdx] = analogRead(A0);
+  if (thermoMax){
+    rawData[rawDataIdx] = thermocouple.readCelsius() * 100;
+  } else {
+    rawData[rawDataIdx] = analogRead(A0);
+  }
   rawDataIdx++;
   rawDataIdx %= RAWDATASIZE;
 
