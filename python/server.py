@@ -221,6 +221,7 @@ class McuProtocol(LineReceiver):
 		sq3cur = sq3con.cursor()
 		sq3cur.execute("DELETE FROM temperatures")
 		sq3cur.execute("DELETE FROM SQLITE_SEQUENCE WHERE name = 'temperatures'")
+		#maybe we also need to execute "VACUUM"? but for some reason, i skipped this ...
 		if self.wsMcuFactory.debugSerial:
 			print "All data was deleted"
 		return True
