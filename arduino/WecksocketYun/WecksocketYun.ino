@@ -63,7 +63,9 @@ float temp_range_min;
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
 
-int currentTemperature1023;
+int currentTemperature1023; //raw temperature from 0 - 1023 (voltage based from analog pin)
+int currentTemperatureDS18B20; //temperature in c * 100, from DS18B20
+
 #define LASTANALYSISSIZE 60
 int lastTemperatures[LASTANALYSISSIZE];
 int sendCounter = 0; //for the analysisDelay to run every N sends
@@ -133,6 +135,7 @@ OneWire ourWire(ONE_WIRE_BUS);
 //Dallas Temperature Library für Nutzung der oneWire Library vorbereiten 
 DallasTemperature sensors(&ourWire);
 DeviceAddress insideThermometer;
+float tCorrectionDS18B20 = -0.25;
 
 
 void setup() {
@@ -291,9 +294,14 @@ void getAnalog(int pin, int id) {
     currentTemperature1023 = median(rawData);
 //  }
 
-  port->print(id);
+}
+
+void sendTemperaturesToPython(){
+  port->print(0); //vormals wurde hier die id uebermittelt
   port->print('\t');
   port->print(currentTemperature1023);
+  port->print('\t');
+  port->print(currentTemperatureDS18B20);
   port->println();
 }
 
@@ -556,15 +564,17 @@ void loop() {
     
     //read temperature value (DS18B20)
     sensors.requestTemperatures(); // Temp abfragen
-    Serial.println(sensors.getTempC(insideThermometer));
-    float temperatureNow = sensors.getTempC(insideThermometer);
+    currentTemperatureDS18B20 = (sensors.getTempC(insideThermometer) + tCorrectionDS18B20) * 100;
+
+    //send temperatures
+    sendTemperaturesToPython();
     
 //    Serial.print("Sending ");
 //    Serial.println(millis() / 1000);
     lcd.setCursor(0,0);
     lcd.print(millis() / 1000);
     lcd.print(" S, ");
-    lcd.print(temperatureNow);
+    lcd.print(currentTemperatureDS18B20 / 100.0);
     
     lcd.setCursor(0,1);
     

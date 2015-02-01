@@ -377,6 +377,7 @@ class McuProtocol(LineReceiver):
 				## publish event to all clients subscribed to topic
 				##
 				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#rawValue", evt)
+				## hier weiter: ueberlegen, ob man zwei events postet, oder rawValue in temperatureArray oder so umbenennt.
 			
 				rawTemp = (data[1],)
 				sq3cur = sq3con.cursor()
@@ -391,7 +392,7 @@ class McuProtocol(LineReceiver):
 				#Show temperature
 				calcTemp = calculateTemperature(data[1])
 				if self.wsMcuFactory.debugSerial:
-					print "Temperature: ", calcTemp, " (" , data[1], ")"
+					print "Temperature: ", calcTemp, "C (" , data[1], ")", ", DS18B20: ", (data[2] / 100.0), "C"
 					
 				#ALARM
 				if (superError == False and calcTemp > 80):
