@@ -1,5 +1,13 @@
+//fuer den DS18B20 Temperatursensor:
+#include <DallasTemperature.h>
+#include <OneWire.h>
+
+//fuer das Display:
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
 //1 if using the max31855 thermocouple, set 0 otherwise
-#define THERMOMAX 0
+//#define THERMOMAX 0
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -20,12 +28,13 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <PID_v1.h>
-#include <PID_AutoTune_v0.h>
-#include <Adafruit_MAX31855.h>
+#include <PID_AutoTune_v0.h> //autotune
+//#include <Adafruit_MAX31855.h>
 
-int thermoDO = 5;
-int thermoCS = 6;
-int thermoCLK = 7;
+//Adafruit_MAX31855.h:
+//int thermoDO = 5;
+//int thermoCS = 6;
+//int thermoCLK = 7;
 
 const int ledPin = 13;
 const int soundPin = 8;
@@ -43,13 +52,13 @@ float temp_range_max;
 float temp_range_min;
 
 //define the size of the median buffer
-#if THERMOMAX
-  #define RAWDATASIZE 10
-  bool thermoMax = true;
-#else
+//#if THERMOMAX
+//  #define RAWDATASIZE 10
+//  bool thermoMax = true;
+//#else
   #define RAWDATASIZE 100
-  bool thermoMax = false;
-#endif
+//  bool thermoMax = false;
+//#endif
 #define RAWDATAMEDIANIDX RAWDATASIZE / 2
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
@@ -62,7 +71,7 @@ int lastTemperaturesSize = 0;
 int analysisDelay;
 
 //MAX31855
-Adafruit_MAX31855 thermocouple(thermoCLK, thermoCS, thermoDO);
+//Adafruit_MAX31855 thermocouple(thermoCLK, thermoCS, thermoDO);
 
 //last serial command
 int last_cmd = -1;
@@ -113,7 +122,26 @@ int fps = 0;
 
 boolean alarmTriggered = false;
 
+//I2C
+LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
+
+//Temperatursensor DS18B20:
+//Digitalport Pin 2 definieren
+#define ONE_WIRE_BUS 2
+//Ini oneWire instance
+OneWire ourWire(ONE_WIRE_BUS);
+//Dallas Temperature Library für Nutzung der oneWire Library vorbereiten 
+DallasTemperature sensors(&ourWire);
+
 void setup() {
+  //I2C
+  lcd.begin(16,2);
+  lcd.setCursor(0,0); //Start at character 4 on line 0
+  lcd.print("Kaisousvide");
+  lcd.setCursor(0,1);
+  lcd.print("WAITING FOR PORT");
+
+
   pinMode(ledPin, OUTPUT);
   pinMode(soundPin, OUTPUT);
   pinMode(heaterPin, OUTPUT);
@@ -130,6 +158,8 @@ void setup() {
   //wait for UBOOT finish
   port->begin(115200);
   Serial.println(F("CHECKING UBOOT"));
+  lcd.setCursor(0,1);
+  lcd.print("LINUX STARTING  ");
   do {
     while (port->available() > 0) {
       port->read();
@@ -139,6 +169,9 @@ void setup() {
     delay(30000);
   } while (port->available() > 0);
   //  port->begin(9600);
+
+  lcd.setCursor(0,1);
+  lcd.print("UBOOT FOUND      ");
 
   //fill data array with zeros
   for (int i = 0; i < RAWDATASIZE; i++) {
@@ -166,6 +199,9 @@ void setup() {
   aTuneStartValue = (float *)(pPidData + 56);
   aTuneLookBack = (float *)(pPidData + 60);
 
+  lcd.setCursor(0,1);
+  lcd.print("LAST SETTINGS...");
+
   //PID
   windowStartTime = millis();
   //initialize the variables we're linked to
@@ -188,6 +224,14 @@ void setup() {
 
   //LED
   digitalWrite(ledPin, LOW);
+  
+  //DS18B20 Temperatursensor:
+  sensors.begin();/* Inizialisieren der Dallas Temperature library */
+  sensors.setResolution(TEMP_12_BIT); // Genauigkeit auf 12-Bit setzen
+  
+  lcd.setCursor(0,1);
+  lcd.print("ENDING SETUP");
+  lcd.clear();
 }
 
 float calculateTemperature(int rawTemp) {
@@ -237,11 +281,11 @@ int median(int array[]) {
 }
 
 void getAnalog(int pin, int id) {
-  if (thermoMax){
-    currentTemperature1023 = revertTemperature(median(rawData) / 100.0);
-  } else {
+//  if (thermoMax){
+//    currentTemperature1023 = revertTemperature(median(rawData) / 100.0);
+//  } else {
     currentTemperature1023 = median(rawData);
-  }
+//  }
 
   port->print(id);
   port->print('\t');
@@ -329,6 +373,7 @@ void resetLastTemperaturesArray(int presetValue, bool resetLastTemperatureSize) 
 }
 
 void loop() {
+  
   //if receiving new PID values
   if (last_cmd == -1 && port->available()) {
     //read command
@@ -339,6 +384,8 @@ void loop() {
   if (relaisIsOn && millis() >= onUntilMillis) {
     digitalWrite(heaterPin, HIGH);
     relaisIsOn = false;
+    lcd.setCursor(11,0);
+    lcd.print("| OFF");
   }
 
   //Compute commands
@@ -500,8 +547,36 @@ void loop() {
     sendCounter++;
     lastTime = millis();
 
-    //send temperature value
-    getAnalog(A0, 0);
+    //read temperature value (Greisinger)
+    getAnalog(A1, 0);
+    
+    //read temperature value (DS18B20)
+    sensors.requestTemperatures(); // Temp abfragen
+    
+//    Serial.print("Sending ");
+//    Serial.println(millis() / 1000);
+    lcd.setCursor(0,0);
+    lcd.print(millis() / 1000);
+    lcd.print(" S, ");
+    lcd.print(sensors.getTempCByIndex(0));
+    
+    lcd.setCursor(0,1);
+    
+    if (pidSettingsReceived) {
+      static char cTemp[5]; //string mit aktueller temperatur (fuer display)
+      dtostrf(calculateTemperature(currentTemperature1023),3,1,cTemp);
+      static char sTemp[5]; //string mit gesetzter temperatur (fuer display)
+      dtostrf(Setpoint,3,1,sTemp);
+      lcd.print(cTemp);
+      lcd.print((char)223);
+      lcd.print("C | ");
+      lcd.print(sTemp);
+      lcd.print((char)223);
+      lcd.print("C  ");
+    } else {
+      lcd.print("WARTE AUF WERTE");
+    }
+    
 
     //analyse last temperatures every N runs (depending on near/far analysis window size)
     if (sendCounter % analysisDelay == 0) {
@@ -646,6 +721,10 @@ void loop() {
           onUntilMillis = millis() + (int) Output;
           relaisIsOn = true;
           digitalWrite(heaterPin, LOW);
+          
+          lcd.setCursor(11,0);
+          lcd.print("| ON ");
+          
         } else {
           Serial.println(F(", output too small "));
           port->print(F("N"));
@@ -661,11 +740,11 @@ void loop() {
   }
 
   //save last value
-  if (thermoMax){
-    rawData[rawDataIdx] = thermocouple.readCelsius() * 100;
-  } else {
-    rawData[rawDataIdx] = analogRead(A0);
-  }
+//  if (thermoMax){
+    //rawData[rawDataIdx] = thermocouple.readCelsius() * 100;
+//  } else {
+    rawData[rawDataIdx] = analogRead(A1);
+// }
   rawDataIdx++;
   rawDataIdx %= RAWDATASIZE;
 
