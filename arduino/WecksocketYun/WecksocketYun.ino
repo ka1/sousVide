@@ -28,7 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include <PID_v1.h>
-#include <PID_AutoTune_v0.h> //autotune
+//#include <PID_AutoTune_v0.h> //autotune
 //#include <Adafruit_MAX31855.h>
 
 //Adafruit_MAX31855.h:
@@ -110,12 +110,12 @@ unsigned long onUntilMillis = 0;
 bool relaisIsOn = false;
 
 //Autotune
-byte ATuneModeRemember = 2;
+//byte ATuneModeRemember = 2;
 //double aTuneStep = 200, aTuneNoise = 0.1, aTuneStartValue = 1000;
 //unsigned int aTuneLookBack = 60;
 
-boolean tuning = false;
-PID_ATune aTune(&Input, &Output);
+//boolean tuning = false;
+//PID_ATune aTune(&Input, &Output);
 
 //count how often the loop runs in a second
 int fps = 0;
@@ -127,11 +127,13 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 
 //Temperatursensor DS18B20:
 //Digitalport Pin 2 definieren
-#define ONE_WIRE_BUS 2
+#define ONE_WIRE_BUS 4
 //Ini oneWire instance
 OneWire ourWire(ONE_WIRE_BUS);
 //Dallas Temperature Library für Nutzung der oneWire Library vorbereiten 
 DallasTemperature sensors(&ourWire);
+DeviceAddress insideThermometer;
+
 
 void setup() {
   //I2C
@@ -217,7 +219,7 @@ void setup() {
   resetLastTemperaturesArray();
 
   //Autotune
-  aTune.SetControlType(1); //1=PID, 0=PI
+  //aTune.SetControlType(1); //1=PID, 0=PI
 
   //relais
   digitalWrite(heaterPin, HIGH);
@@ -227,7 +229,9 @@ void setup() {
   
   //DS18B20 Temperatursensor:
   sensors.begin();/* Inizialisieren der Dallas Temperature library */
-  sensors.setResolution(TEMP_12_BIT); // Genauigkeit auf 12-Bit setzen
+  sensors.getAddress(insideThermometer, 0);
+  sensors.setResolution(insideThermometer, 12);
+  sensors.setWaitForConversion(false);
   
   lcd.setCursor(0,1);
   lcd.print("ENDING SETUP");
@@ -294,35 +298,35 @@ void getAnalog(int pin, int id) {
 }
 
 
-void changeAutoTune()
-{
-  if (!tuning)
-  {
-    //Set the output to the desired starting frequency.
-    Output = *aTuneStartValue;
-    aTune.SetNoiseBand(*aTuneNoise);
-    aTune.SetOutputStep(*aTuneStep);
-    aTune.SetLookbackSec((int)*aTuneLookBack);
-    AutoTuneHelper(true);
-    tuning = true;
-    Serial.println(F("tuning started"));
-  }
-  else
-  { //cancel autotune
-    aTune.Cancel();
-    tuning = false;
-    AutoTuneHelper(false);
-    Serial.println(F("tuning stopped"));
-  }
-}
+//void changeAutoTune()
+//{
+//  if (!tuning)
+//  {
+//    //Set the output to the desired starting frequency.
+//    Output = *aTuneStartValue;
+//    aTune.SetNoiseBand(*aTuneNoise);
+//    aTune.SetOutputStep(*aTuneStep);
+//    aTune.SetLookbackSec((int)*aTuneLookBack);
+//    AutoTuneHelper(true);
+//    tuning = true;
+//    Serial.println(F("tuning started"));
+//  }
+//  else
+//  { //cancel autotune
+//    aTune.Cancel();
+//    tuning = false;
+//    AutoTuneHelper(false);
+//    Serial.println(F("tuning stopped"));
+//  }
+//}
 
-void AutoTuneHelper(boolean start)
-{
-  if (start)
-    ATuneModeRemember = myPID.GetMode();
-  else
-    myPID.SetMode(ATuneModeRemember);
-}
+//void AutoTuneHelper(boolean start)
+//{
+//  if (start)
+//    ATuneModeRemember = myPID.GetMode();
+//  else
+//    myPID.SetMode(ATuneModeRemember);
+//}
 
 int getMaxValue(int theArray[]) {
   int maxValue = 0;
@@ -425,24 +429,24 @@ void loop() {
         last_cmd = -1;
       }
     }
-    else if (last_cmd == 'Q') {
-      if (port->available() >= 16) {
-        //sending more PID parameters in a different string, because the (default) serial buffer is 64 bytes large
-        port->readBytes((char *)pPidData + 48, 16);
-
-        Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
-        Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
-        Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
-        Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
-
-        if (tuning) {
-          Serial.println(F("Tuning parameters reset. Restarting tuning."));
-          changeAutoTune(); //first call will cancel the tuning
-          changeAutoTune(); //second call with set the values and start again
-        }
-        last_cmd = -1;
-      }
-    }
+//    else if (last_cmd == 'Q') {
+//      if (port->available() >= 16) {
+//        //sending more PID parameters in a different string, because the (default) serial buffer is 64 bytes large
+//        port->readBytes((char *)pPidData + 48, 16);
+//
+//        Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
+//        Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
+//        Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
+//        Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
+//
+//        if (tuning) {
+//          Serial.println(F("Tuning parameters reset. Restarting tuning."));
+//          changeAutoTune(); //first call will cancel the tuning
+//          changeAutoTune(); //second call with set the values and start again
+//        }
+//        last_cmd = -1;
+//      }
+//    }
     else if (last_cmd == 'O')
     {
       if (port->available() >= 1) {
@@ -457,15 +461,15 @@ void loop() {
         last_cmd = -1;
       }
     }
-    else if (last_cmd == 'A') {
-      if (port->available() >= 1) {
-        //only switch LED on and off
-        int inByte = port->read();
-        //switch tuning, if value received is different from the tuning state
-        if ((inByte == '1' && !tuning) || (inByte != '1' && tuning)) changeAutoTune();
-        last_cmd = -1;
-      }
-    }
+//    else if (last_cmd == 'A') {
+//      if (port->available() >= 1) {
+//        //only switch LED on and off
+//        int inByte = port->read();
+//        //switch tuning, if value received is different from the tuning state
+//        if ((inByte == '1' && !tuning) || (inByte != '1' && tuning)) changeAutoTune();
+//        last_cmd = -1;
+//      }
+//    }
     else if (last_cmd == 'X') {
       if (port->available() >= 1) {
         //only switch Sound on and off
@@ -497,7 +501,7 @@ void loop() {
           //switch off
           if (pidStarted == true) {
             //first switch off autotune
-            if (tuning) changeAutoTune();
+//            if (tuning) changeAutoTune();
             pidStarted = false;
             Serial.println(F("PID turned off"));
           }
@@ -552,13 +556,15 @@ void loop() {
     
     //read temperature value (DS18B20)
     sensors.requestTemperatures(); // Temp abfragen
+    Serial.println(sensors.getTempC(insideThermometer));
+    float temperatureNow = sensors.getTempC(insideThermometer);
     
 //    Serial.print("Sending ");
 //    Serial.println(millis() / 1000);
     lcd.setCursor(0,0);
     lcd.print(millis() / 1000);
     lcd.print(" S, ");
-    lcd.print(sensors.getTempCByIndex(0));
+    lcd.print(temperatureNow);
     
     lcd.setCursor(0,1);
     
@@ -657,46 +663,46 @@ void loop() {
         }
 
         // ------------ AUTOTUNE ------------
-        if (tuning)
-        {
-          byte val = (aTune.Runtime());
-          if (val != 0)
-          {
-            tuning = false;
-          }
-          if (!tuning)
-          { //we're done, set the tuning parameters
-            *pPid_p = aTune.GetKp();
-            *pPid_i = aTune.GetKi();
-            *pPid_d = aTune.GetKd();
-            Serial.println(F("Done tuning. Using new settings"));
-            Serial.println(*pPid_p);
-            Serial.println(*pPid_i);
-            Serial.println(*pPid_d);
-            myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
-            AutoTuneHelper(false);
-            //Sending values to python
-            port->print(F("A"));
-            port->print(*pPid_p);
-            port->print('\t');
-            port->print(*pPid_i);
-            port->print('\t');
-            port->println(*pPid_d);
-          }
-        }
+//        if (tuning)
+//        {
+//          byte val = (aTune.Runtime());
+//          if (val != 0)
+//          {
+//            tuning = false;
+//          }
+//          if (!tuning)
+//          { //we're done, set the tuning parameters
+//            *pPid_p = aTune.GetKp();
+//            *pPid_i = aTune.GetKi();
+//            *pPid_d = aTune.GetKd();
+//            Serial.println(F("Done tuning. Using new settings"));
+//            Serial.println(*pPid_p);
+//            Serial.println(*pPid_i);
+//            Serial.println(*pPid_d);
+//            myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
+//            AutoTuneHelper(false);
+//            //Sending values to python
+//            port->print(F("A"));
+//            port->print(*pPid_p);
+//            port->print('\t');
+//            port->print(*pPid_i);
+//            port->print('\t');
+//            port->println(*pPid_d);
+//          }
+//        }
         // -------------- PID --------------
-        else {
+//        else {
           myPID.Compute();
-        }
+//       }
 
         //echo tuning parameters
         Serial.print(F("FPS")); Serial.print(fps); Serial.print(F(" "));
         Serial.print(F("setpoint: ")); Serial.print(Setpoint); Serial.print(F(" "));
         Serial.print(F("input: ")); Serial.print(Input); Serial.print(F(" "));
         Serial.print(F("output: ")); Serial.print(Output); Serial.print(F(" "));
-        if (tuning) {
-          Serial.println(F("tuning mode"));
-        } else {
+//        if (tuning) {
+//          Serial.println(F("tuning mode"));
+//        } else {
           Serial.print(F("kp: ")); Serial.print(myPID.GetKp()); Serial.print(F(" "));
           Serial.print(F("ki: ")); Serial.print(myPID.GetKi()); Serial.print(F(" "));
           Serial.print(F("kd: ")); Serial.print(myPID.GetKd()); Serial.print(F(" ||| "));
@@ -706,7 +712,7 @@ void loop() {
           //        Serial.print(F("akp: ")); Serial.print(aTune.GetKp()); Serial.print(F(" "));
           //        Serial.print(F("aki: ")); Serial.print(aTune.GetKi()); Serial.print(F(" "));
           //        Serial.print(F("akd: ")); Serial.print(aTune.GetKd()); Serial.print(F(" "));
-        }
+//        }
 
         if (Output > (WindowSize * 1000)) {
           Serial.println(F("PID LIB ERR")); // sanity check
