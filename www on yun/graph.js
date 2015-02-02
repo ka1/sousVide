@@ -63,8 +63,14 @@ function newRawDataReceived(topicUri, singleDatum) {
 	singleDatum.Zeitpunkt = parseDate(singleDatum.Zeitpunkt);
 	singleDatum.Temperatur = +calculateTemperature(singleDatum.Temperatur);
 	
+	var temperature1datum = {'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur};
+	var temperature2datum = {'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur2};
+	
+	//TODO: seems to work ... now set the range!
+	
 	//add new data to array
-	graphData.push(singleDatum);
+	graphData.push(temperature1datum);
+	graph2Data.push(temperature2datum);
 	
 	//rescale
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
@@ -85,6 +91,7 @@ function newRawDataReceived(topicUri, singleDatum) {
 	
 	//draw new graphs
 	graphMain.select("path.line").datum(graphData).attr("d", line);
+	graphMain.select("path.temp2line").datum(graph2Data).attr("d", lineTemp2);
 	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
@@ -110,6 +117,7 @@ function updateGraphDrawing(){
 	
 	//draw new graphs
 	graphMain.select("path.line").datum(graphData).attr("d", line);
+	graphMain.select("path.temp2line").datum(graph2Data).attr("d", lineTemp2);
 	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
@@ -371,6 +379,7 @@ var	hoverLineX, //X-part of crosshair
 	currentTemperatureText, //temperature next to crosshair
 	runningBrush = true,
 	graphData = []; //the data
+	graph2Data = []; //the data
 	pidGraphData = []; //the pid runtime data
 
 var graphDrawn = false; //is the graph drawn already
@@ -412,6 +421,11 @@ var line = d3.svg.line()
 var line2 = d3.svg.line()
 	.x(function(d) { return x2(d.Zeitpunkt); })
 	.y(function(d) { return y2(d.Temperatur); });
+
+var lineTemp2 = d3.svg.line()
+	.interpolate("linear") //linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
+	.x(function(d) { return x(d.Zeitpunkt); })
+	.y(function(d) { return y(d.Temperatur); });
 
 var linePid = d3.svg.line()
 	.interpolate("basis") //basis, linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
@@ -551,6 +565,12 @@ function drawGraph(){
 		.attr("d", line);
 	
 	graphMain.append("path")
+		.datum(graph2Data)
+		.attr("class", "temp2line")
+		.attr("clip-path", "url(#clip)")
+		.attr("d", line);
+	
+	graphMain.append("path")
 		.datum(pidGraphData)
 		.attr("class", "pidLine")
 		.attr("clip-path", "url(#clip)")
@@ -660,6 +680,7 @@ function mousemove(){
 function brushFunction() {
 	x.domain(brush.empty() ? x2.domain() : brush.extent());
 	graphMain.select("path.line").attr("d", line);
+	graphMain.select("path.temp2line").attr("d", lineTemp2);
 	graphMain.select("path.pidLine").attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	runningBrush = false; //disable the running brush

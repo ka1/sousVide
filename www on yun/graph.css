@@ -28,6 +28,13 @@ body {
   stroke:black;
 }
 
+.temp2line{
+	fill:none;
+	stroke-width: 1px;
+	stroke:red;
+	stroke-dasharray:2,2;
+}
+
 .pidLine {
 	fill:none;
 	stroke-width: 1px;

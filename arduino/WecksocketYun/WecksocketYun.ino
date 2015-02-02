@@ -135,7 +135,7 @@ OneWire ourWire(ONE_WIRE_BUS);
 //Dallas Temperature Library für Nutzung der oneWire Library vorbereiten 
 DallasTemperature sensors(&ourWire);
 DeviceAddress insideThermometer;
-float tCorrectionDS18B20 = -0.25;
+float tCorrectionDS18B20 = -0.15;
 
 
 void setup() {

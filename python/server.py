@@ -372,7 +372,7 @@ class McuProtocol(LineReceiver):
 
 				## construct PubSub event from raw data
 				##
-				evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'Temperatur': data[1]}
+				evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'Temperatur': data[1], 'Temperatur2': (data[2] / 100.0)}
 
 				## publish event to all clients subscribed to topic
 				##
