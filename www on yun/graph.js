@@ -33,7 +33,8 @@ function autoTuneDataReceived(topicUri, aTuneData) {
 
 function nearFarChangeReceived(topicUri, changeMessage) {
 	console.log("Changing between near and far parameter set: " + changeMessage);
-	alert("Changing between near and far parameter set: " + changeMessage);
+	//alert("Changing between near and far parameter set: " + changeMessage);
+	//TODO: on screen message
 }
 
 function pidSkipped(topicUri, skipCount) {
@@ -65,17 +66,17 @@ function newRawDataReceived(topicUri, singleDatum) {
 	
 	var temperature1datum = {'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur};
 	var temperature2datum = {'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur2};
-	
-	//TODO: seems to work ... now set the range!
-	
+		
 	//add new data to array
 	graphData.push(temperature1datum);
 	graph2Data.push(temperature2datum);
 	
 	//rescale
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
+	var y2Range = d3.extent(graph2Data, function(d) { return d.Temperatur; });
 	x2.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
-	y2.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
+	//choose which min is lower, y or y2, and choose which max is higher, y or y2
+	y2.domain([Math.min(yRange[0],y2Range[0]) - temperatureMargin,Math.max(yRange[1],y2Range[1]) + temperatureMargin]);
 	y.domain(y2.domain()); //set main window y scale to brush window scale
 	
 	//TODO: check if we can use updateGraphDrawing() here
@@ -111,8 +112,9 @@ function newRawDataReceived(topicUri, singleDatum) {
 function updateGraphDrawing(){
 	//rescale
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
+	var y2Range = d3.extent(graph2Data, function(d) { return d.Temperatur; });
 	x2.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
-	y2.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
+	y2.domain([Math.min(yRange[0],y2Range[0]) - temperatureMargin,Math.max(yRange[1],y2Range[1]) + temperatureMargin]);
 	y.domain(y2.domain()); //set main window y scale to brush window scale
 	
 	//draw new graphs
@@ -167,6 +169,9 @@ function askForSettings(updateGraph){
 				//store data in globally available array
 				graphData = data;
 				console.log('Graph data stored');
+				
+				//TODO: also get graph2data from db
+				graph2Data = [];
 				
 				//only really draw the graph if we have never drawn the graph
 				if (!graphDrawn) {
@@ -545,10 +550,11 @@ function calculateTemperature(rawTemp){
 function setRange(){
 	//configure tick values and domain (range from to)
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
+	var y2Range = d3.extent(graph2Data, function(d) { return d.Temperatur; });
 	
 	//set range
 	x.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
-	y.domain([yRange[0] - temperatureMargin,yRange[1] + temperatureMargin]);
+	y2.domain([Math.min(yRange[0],y2Range[0]) - temperatureMargin,Math.max(yRange[1],y2Range[1]) + temperatureMargin]);
 	x2.domain(x.domain());
 	y2.domain(y.domain());
 	yPid.domain([-500,10000]);
@@ -674,7 +680,9 @@ function mousemove(){
 			hoverLayerPid.attr("transform", "translate(" + transXPid + "," + transYPid + ")");
 			hoverTextPidLength.text(dPid.pidLength + "ms");
 		}
-    }    
+    }
+    
+    //TODO: now do the graph2data
 }
 
 function brushFunction() {
