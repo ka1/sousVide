@@ -74,6 +74,9 @@ aTuneLookBack = 0
 
 sendPushover = True
 
+lastDBentryTime = 0;
+enterEveryNSeconds = 10;
+
 #Pushover
 pushoverMessageCount = 0; #limit the number of message calls while running
 pushoverMessageMax = 50;
@@ -191,13 +194,14 @@ class McuProtocol(LineReceiver):
 		getEveryN = round(float(tempCount[0]) / float(numberTotal), 0)
 		if getEveryN < 1:
 			getEveryN = 1
+		print "getting every " + str(getEveryN) + "nth entry"
 		getEveryN = (getEveryN,)
-		print "getting " + str(getEveryN)
-		sq3cur.execute("SELECT temperature,datetime(timestamp,'unixepoch','localtime') AS timestamp,temp_ID FROM temperatures WHERE temperature != 0 AND temperature != 1023 AND temp_ID %? = 0 AND temp_ID > 60 ORDER BY temp_ID ASC", getEveryN)
+		#get after ID 6 ... this should roughly be one minute. this was the time it took to get a valid time, but internet connection is necessary for that.
+		sq3cur.execute("SELECT temperature,temperature2 / 100.0,datetime(timestamp,'unixepoch','localtime') AS timestamp,temp_ID FROM temperatures WHERE temperature != 0 AND temperature != 1023 AND temp_ID %? = 0 AND temp_ID > 6 ORDER BY temp_ID ASC", getEveryN)
 		dbContents = sq3cur.fetchall()
-		dbContentsTsv = "Ident\tZeitpunkt\tTemperatur\n"
+		dbContentsTsv = "Ident\tZeitpunkt\tTemperatur\tTemperatur2\n"
 		for row in dbContents:
-			dbContentsTsv += str("{0}\t{1}\t{2}\n".format(row[2], row[1], row[0]))
+			dbContentsTsv += str("{0}\t{1}\t{2}\t{3}\n".format(row[3], row[2], row[0], "%.1f" % row[1]))
 		return dbContentsTsv
 	
 	@exportRpc("getSettings")
@@ -319,7 +323,7 @@ class McuProtocol(LineReceiver):
 
 	def lineReceived(self, line):
 	#/opt/usr/bin/php-cli -c /opt/etc/php.ini /mnt/sda1/wemo/wemoTimed.php 192.168.4.149 200
-		global p, pSkipped, sqliteErrorCount, pushoverMessageCount, superError
+		global p, pSkipped, sqliteErrorCount, pushoverMessageCount, superError, lastDBentryTime, enterEveryNSeconds
 		if (line.startswith("P") or line.startswith("N")):
 			pidLength = int(float(line[1:]))
 			if self.wsMcuFactory.debugSerial:
@@ -372,22 +376,30 @@ class McuProtocol(LineReceiver):
 
 				## construct PubSub event from raw data
 				##
-				evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'Temperatur': data[1], 'Temperatur2': (data[2] / 100.0)}
+				evt = {'Zeitpunkt': time.strftime("%Y-%m-%d %H:%M:%S"), 'Temperatur': data[1], 'Temperatur2': "%.1f" % (data[2] / 100.0)}
 
 				## publish event to all clients subscribed to topic
 				##
 				self.wsMcuFactory.dispatch("http://raumgeist.dyndns.org/thermo#rawValue", evt)
-				## hier weiter: ueberlegen, ob man zwei events postet, oder rawValue in temperatureArray oder so umbenennt.
-			
-				rawTemp = (data[1],)
-				sq3cur = sq3con.cursor()
-				try:
-					sq3cur.execute("INSERT INTO temperatures (temperature) VALUES (?)", rawTemp)
-					sq3con.commit()
-				except sqlite3.OperationalError, msg:
-					sqliteErrorCount += 1
-					if self.wsMcuFactory.debugSerial:
-						print "sqlite error: ", msg
+
+				## see if its time to save to db
+				timeDistance = time.time() - lastDBentryTime
+				#it might be something like 9.93, so subtract 0.4
+				if (timeDistance > enterEveryNSeconds - 0.4):
+					print timeDistance
+				
+					insertData = (data[1], data[2])
+					sq3cur = sq3con.cursor()
+					try:
+						sq3cur.execute("INSERT INTO temperatures (temperature, temperature2) VALUES (?,?)", insertData)
+						sq3con.commit()
+					except sqlite3.OperationalError, msg:
+						sqliteErrorCount += 1
+						if self.wsMcuFactory.debugSerial:
+							print "sqlite error: ", msg
+				
+					lastDBentryTime = time.time()
+
 				
 				#Show temperature
 				calcTemp = calculateTemperature(data[1])

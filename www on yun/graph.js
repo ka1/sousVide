@@ -64,16 +64,13 @@ function newRawDataReceived(topicUri, singleDatum) {
 	singleDatum.Zeitpunkt = parseDate(singleDatum.Zeitpunkt);
 	singleDatum.Temperatur = +calculateTemperature(singleDatum.Temperatur);
 	
-	var temperature1datum = {'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur};
-	var temperature2datum = {'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur2};
-		
 	//add new data to array
-	graphData.push(temperature1datum);
-	graph2Data.push(temperature2datum);
+	graphData.push({'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur, 'Temperatur2': singleDatum.Temperatur2});
 	
+	//TODO: can we do an extend over two columns to avoid these two lines?
 	//rescale
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
-	var y2Range = d3.extent(graph2Data, function(d) { return d.Temperatur; });
+	var y2Range = d3.extent(graphData, function(d) { return d.Temperatur2; });
 	x2.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
 	//choose which min is lower, y or y2, and choose which max is higher, y or y2
 	y2.domain([Math.min(yRange[0],y2Range[0]) - temperatureMargin,Math.max(yRange[1],y2Range[1]) + temperatureMargin]);
@@ -92,7 +89,7 @@ function newRawDataReceived(topicUri, singleDatum) {
 	
 	//draw new graphs
 	graphMain.select("path.line").datum(graphData).attr("d", line);
-	graphMain.select("path.temp2line").datum(graph2Data).attr("d", lineTemp2);
+	graphMain.select("path.temp2line").datum(graphData).attr("d", lineTemp2);
 	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
@@ -112,14 +109,14 @@ function newRawDataReceived(topicUri, singleDatum) {
 function updateGraphDrawing(){
 	//rescale
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
-	var y2Range = d3.extent(graph2Data, function(d) { return d.Temperatur; });
+	var y2Range = d3.extent(graphData, function(d) { return d.Temperatur2; });
 	x2.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
 	y2.domain([Math.min(yRange[0],y2Range[0]) - temperatureMargin,Math.max(yRange[1],y2Range[1]) + temperatureMargin]);
 	y.domain(y2.domain()); //set main window y scale to brush window scale
 	
 	//draw new graphs
 	graphMain.select("path.line").datum(graphData).attr("d", line);
-	graphMain.select("path.temp2line").datum(graph2Data).attr("d", lineTemp2);
+	graphMain.select("path.temp2line").datum(graphData).attr("d", lineTemp2);
 	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
@@ -159,22 +156,20 @@ function askForSettings(updateGraph){
 		
 		if (updateGraph){
 			//ask for all values
-			sess.call("rpc:getEntireDB", 500).then(function (resultValues) {
+			sess.call("rpc:getEntireDB", 50).then(function (resultValues) {
 				data = d3.tsv.parse(resultValues);
 				data.forEach(function(d) {
 					d.Zeitpunkt = parseDate(d.Zeitpunkt);
 					d.Temperatur = +(calculateTemperature(d.Temperatur));
+					d.Temperatur2 = d.Temperatur2;
 				});
 				
 				//store data in globally available array
 				graphData = data;
 				console.log('Graph data stored');
 				
-				//TODO: also get graph2data from db
-				graph2Data = [];
-				
 				//only really draw the graph if we have never drawn the graph
-				if (!graphDrawn) {
+				if (graphData.length > 0 && !graphDrawn) {
 					console.log('Redrawing graph');
 					drawGraph();
 				}
@@ -384,7 +379,6 @@ var	hoverLineX, //X-part of crosshair
 	currentTemperatureText, //temperature next to crosshair
 	runningBrush = true,
 	graphData = []; //the data
-	graph2Data = []; //the data
 	pidGraphData = []; //the pid runtime data
 
 var graphDrawn = false; //is the graph drawn already
@@ -430,7 +424,7 @@ var line2 = d3.svg.line()
 var lineTemp2 = d3.svg.line()
 	.interpolate("linear") //linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
 	.x(function(d) { return x(d.Zeitpunkt); })
-	.y(function(d) { return y(d.Temperatur); });
+	.y(function(d) { return y(d.Temperatur2); });
 
 var linePid = d3.svg.line()
 	.interpolate("basis") //basis, linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
@@ -550,7 +544,7 @@ function calculateTemperature(rawTemp){
 function setRange(){
 	//configure tick values and domain (range from to)
 	var yRange = d3.extent(graphData, function(d) { return d.Temperatur; });
-	var y2Range = d3.extent(graph2Data, function(d) { return d.Temperatur; });
+	var y2Range = d3.extent(graphData, function(d) { return d.Temperatur2; });
 	
 	//set range
 	x.domain(d3.extent(graphData, function(d) { return d.Zeitpunkt; }));
@@ -571,16 +565,16 @@ function drawGraph(){
 		.attr("d", line);
 	
 	graphMain.append("path")
-		.datum(graph2Data)
+		.datum(graphData)
 		.attr("class", "temp2line")
 		.attr("clip-path", "url(#clip)")
-		.attr("d", line);
+		.attr("d", lineTemp2);
 	
 	graphMain.append("path")
 		.datum(pidGraphData)
 		.attr("class", "pidLine")
 		.attr("clip-path", "url(#clip)")
-		.attr("d", line);
+		.attr("d", linePid);
 	
 	//x Achse
 	graphMain.append("g")
@@ -664,7 +658,7 @@ function mousemove(){
 	    //change Text
 	    var format = d3.time.format("%H:%M:%S");
 	    hoverTextDate.text(format(d.Zeitpunkt));
-	    hoverTextTemperature.text(d.Temperatur + "°C");
+	    hoverTextTemperature.text(d.Temperatur + "°C / " + d.Temperatur2 + "°C");
 	}
 
     if (pidGraphData.length > 0){
@@ -682,7 +676,7 @@ function mousemove(){
 		}
     }
     
-    //TODO: now do the graph2data
+    //TODO: now create a dot for the second temperature2 (hoverLayer2?)
 }
 
 function brushFunction() {
