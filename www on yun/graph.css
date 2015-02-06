@@ -42,6 +42,20 @@ body {
 	stroke-dasharray:3,3;
 }
 
+.diffline {
+	fill:none;
+	stroke-width: 1px;
+	stroke:#0a6;
+	opacity: .8;
+}
+
+.diffzero {
+	fill:none;
+	stroke-width: 1px;
+	stroke:#0a6;
+	stroke-dasharray:1,5;
+}
+
 .hoverLine {
 	stroke:#aaa;
 	stroke-dasharray:3,7;

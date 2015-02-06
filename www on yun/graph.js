@@ -65,7 +65,7 @@ function newRawDataReceived(topicUri, singleDatum) {
 	singleDatum.Temperatur = +calculateTemperature(singleDatum.Temperatur);
 	
 	//add new data to array
-	graphData.push({'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur, 'Temperatur2': singleDatum.Temperatur2});
+	graphData.push({'Zeitpunkt':singleDatum.Zeitpunkt, 'Temperatur':singleDatum.Temperatur, 'Temperatur2': singleDatum.Temperatur2, 'Abweichung': singleDatum.Temperatur2 - singleDatum.Temperatur});
 	
 	//TODO: can we do an extend over two columns to avoid these two lines?
 	//rescale
@@ -90,6 +90,7 @@ function newRawDataReceived(topicUri, singleDatum) {
 	//draw new graphs
 	graphMain.select("path.line").datum(graphData).attr("d", line);
 	graphMain.select("path.temp2line").datum(graphData).attr("d", lineTemp2);
+	graphMain.select("path.diffline").datum(graphData).attr("d", lineDiff);
 	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
@@ -101,8 +102,8 @@ function newRawDataReceived(topicUri, singleDatum) {
 	graphMain.select("#blurTop").attr("transform","translate(0," + y(pidSetTemp + pidSetTempBlur) + ")");
 	graphMain.select("#blurBottom").attr("transform","translate(0," + y(pidSetTemp - pidSetTempBlur) + ")");
 	
-	currentTemperatureText.text(singleDatum.Temperatur + "°C");
-	console.log("received " + singleDatum.Temperatur + "C");
+	currentTemperatureText.text(singleDatum.Temperatur + " / " + singleDatum.Temperatur2 + "°C");
+	console.log("received " + singleDatum.Temperatur + "C / " + singleDatum.Temperatur2 + "C");
 	return;
 }
 
@@ -117,6 +118,7 @@ function updateGraphDrawing(){
 	//draw new graphs
 	graphMain.select("path.line").datum(graphData).attr("d", line);
 	graphMain.select("path.temp2line").datum(graphData).attr("d", lineTemp2);
+	graphMain.select("path.diffline").datum(graphData).attr("d", lineDiff);
 	graphMain.select("path.pidLine").datum(pidGraphData).attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	graphMain.select(".y.axis").call(yAxis);
@@ -156,17 +158,18 @@ function askForSettings(updateGraph){
 		
 		if (updateGraph){
 			//ask for all values
-			sess.call("rpc:getEntireDB", 50).then(function (resultValues) {
+			sess.call("rpc:getEntireDB", 500).then(function (resultValues) {
 				data = d3.tsv.parse(resultValues);
 				data.forEach(function(d) {
 					d.Zeitpunkt = parseDate(d.Zeitpunkt);
 					d.Temperatur = +(calculateTemperature(d.Temperatur));
 					d.Temperatur2 = d.Temperatur2;
+					d.Abweichung = d.Temperatur2 - d.Temperatur;
 				});
 				
 				//store data in globally available array
 				graphData = data;
-				console.log('Graph data stored');
+				console.log('Graph data stored, received ' + graphData.length + ' values');
 				
 				//only really draw the graph if we have never drawn the graph
 				if (graphData.length > 0 && !graphDrawn) {
@@ -400,6 +403,7 @@ var x = d3.time.scale().range([0, width]),
 	y = d3.scale.linear().range([height, 0]),
 	y2 = d3.scale.linear().range([height2, 0]),
 	yPid = d3.scale.linear().range([height, 0]);
+	yDiff = d3.scale.linear().range([height, 0]);
 	
 
 var xAxis = d3.svg.axis().scale(x).orient("bottom"),
@@ -425,7 +429,12 @@ var lineTemp2 = d3.svg.line()
 	.interpolate("linear") //linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
 	.x(function(d) { return x(d.Zeitpunkt); })
 	.y(function(d) { return y(d.Temperatur2); });
-
+	
+var lineDiff = d3.svg.line()
+	.interpolate("linear") //linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
+	.x(function(d) { return x(d.Zeitpunkt); })
+	.y(function(d) { return yDiff(d.Abweichung); });
+	
 var linePid = d3.svg.line()
 	.interpolate("basis") //basis, linear (-open/-closed) linear (-closed) monotone step-before step-after cardinal (-open/-closed) bundle
 	.x(function(d) { return x(d.Zeitpunkt); })
@@ -516,8 +525,8 @@ var currentTemperatureGroup = graphMain.append("g")
 	.attr("transform", "translate(" + width/2 + "," + (30) + ")");
 	
 currentTemperatureGroup.append("rect")
-    .attr("width", 100)
-    .attr("x",-50)
+    .attr("width", 150)
+    .attr("x",-75)
     .attr("height", "4em")
     .attr("class","currentTempRect")
     .attr("rx",10)
@@ -552,6 +561,7 @@ function setRange(){
 	x2.domain(x.domain());
 	y2.domain(y.domain());
 	yPid.domain([-500,10000]);
+	yDiff.domain([-2,2]);
 }
 
 function drawGraph(){
@@ -570,6 +580,12 @@ function drawGraph(){
 		.attr("clip-path", "url(#clip)")
 		.attr("d", lineTemp2);
 	
+	graphMain.append("path")
+		.datum(graphData)
+		.attr("class", "diffline")
+		.attr("clip-path", "url(#clip)")
+		.attr("d", lineDiff);
+		
 	graphMain.append("path")
 		.datum(pidGraphData)
 		.attr("class", "pidLine")
@@ -614,7 +630,13 @@ function drawGraph(){
 		.attr("x2",width)
 		.attr("transform","translate(0," + y(pidSetTemp - pidSetTempBlur) + ")");
 	
-    
+	//the difference 0 line
+	graphMain.append("line")
+		.attr("class","diffzero")
+		.attr("transform","translate(0," + yDiff(0) + ")")
+		.attr("x1",0)
+		.attr("x2",width);
+
     //context / brush
 	graphBrush.append("path")
 		.datum(graphData)
@@ -683,6 +705,7 @@ function brushFunction() {
 	x.domain(brush.empty() ? x2.domain() : brush.extent());
 	graphMain.select("path.line").attr("d", line);
 	graphMain.select("path.temp2line").attr("d", lineTemp2);
+	graphMain.select("path.diffline").attr("d", lineDiff);
 	graphMain.select("path.pidLine").attr("d", linePid);
 	graphMain.select(".x.axis").call(xAxis);
 	runningBrush = false; //disable the running brush
