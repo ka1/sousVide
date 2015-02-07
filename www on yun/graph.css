@@ -49,11 +49,19 @@ body {
 	opacity: .8;
 }
 
+.diffHalf {
+	fill:none;
+	stroke-width: 1px;
+	stroke:#0a6;
+	opacity: .8;
+	stroke-dasharray:5,15,2,15;
+}
+
 .diffzero {
 	fill:none;
 	stroke-width: 1px;
 	stroke:#0a6;
-	stroke-dasharray:1,5;
+	stroke-dasharray:5,15;
 }
 
 .hoverLine {

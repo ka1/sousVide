@@ -63,6 +63,7 @@ float temp_range_min;
 int rawData[RAWDATASIZE];
 byte rawDataIdx = 0;
 
+int currentPIDTtemperature; //always use this temperature for PID
 int currentTemperature1023; //raw temperature from 0 - 1023 (voltage based from analog pin)
 int currentTemperatureDS18B20; //temperature in c * 100, from DS18B20
 
@@ -96,6 +97,8 @@ float *aTuneStep;
 float *aTuneNoise;
 float *aTuneStartValue;
 float *aTuneLookBack;
+int *useWhichTemperatureForPID = 0; //if 1, use 1023, if 2, use DS18B20 in all pid temperature cases.
+
 
 //PID
 double Input, Output, Setpoint;
@@ -186,7 +189,7 @@ void setup() {
   lastTime = millis();
 
   //set the memory adresses of the pid settings
-  pPidData = (byte *)malloc(64);
+  pPidData = (byte *)malloc(66);
   pPid_settemp = (float *)pPidData;
   pPid_p = (float *)(pPidData + 4);
   pPid_i = (float *)(pPidData + 8);
@@ -203,6 +206,7 @@ void setup() {
   aTuneNoise = (float *)(pPidData + 52);
   aTuneStartValue = (float *)(pPidData + 56);
   aTuneLookBack = (float *)(pPidData + 60);
+  useWhichTemperatureForPID = (int *)(pPidData + 64); //short = 2 bytes
 
   lcd.setCursor(0,1);
   lcd.print("LAST SETTINGS...");
@@ -242,9 +246,13 @@ void setup() {
 }
 
 float calculateTemperature(int rawTemp) {
-  float temp = ((float)rawTemp / 1023.0) * ((float) * referenceVoltage);
-  temp = ((float) * range_min) + (temp * (((float) * range_max) - ((float) * range_min)));
-  return round(temp * 10.0) / 10.0;
+  if (*useWhichTemperatureForPID == 1){
+    float temp = ((float)rawTemp / 1023.0) * ((float) * referenceVoltage);
+    temp = ((float) * range_min) + (temp * (((float) * range_max) - ((float) * range_min)));
+    return round(temp * 10.0) / 10.0;
+  } else {
+    return rawTemp / 100;
+  }
 }
 
 float revertTemperature(double celsius) {
@@ -314,7 +322,7 @@ void sendTemperaturesToPython(){
 //    Output = *aTuneStartValue;
 //    aTune.SetNoiseBand(*aTuneNoise);
 //    aTune.SetOutputStep(*aTuneStep);
-//    aTune.SetLookbackSec((int)*aTuneLookBack);
+//    aTune.SetLookbackSec((int)*);
 //    AutoTuneHelper(true);
 //    tuning = true;
 //    Serial.println(F("tuning started"));
@@ -406,7 +414,7 @@ void loop() {
     //Serial.println(port->available());
     if (last_cmd == 'P')
     {
-      if (port->available() >= 48) {
+      if (port->available() >= 48) { //48= 12*4
         port->readBytes((char *)pPidData, 48);
 
         Serial.print(F("Received new PID values: Setpoint ")); Serial.print(*pPid_settemp);
@@ -437,24 +445,25 @@ void loop() {
         last_cmd = -1;
       }
     }
-//    else if (last_cmd == 'Q') {
-//      if (port->available() >= 16) {
-//        //sending more PID parameters in a different string, because the (default) serial buffer is 64 bytes large
-//        port->readBytes((char *)pPidData + 48, 16);
-//
-//        Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
-//        Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
-//        Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
-//        Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
-//
+    else if (last_cmd == 'Q') {
+      if (port->available() >= 18) { //4 * 4 (float) + 2 (int / short)
+        //sending more PID parameters in a different string, because the (default) serial buffer is 64 bytes large
+        port->readBytes((char *)pPidData + 48, 18);
+
+        Serial.print(F("Received autoTune values: Start ")); Serial.print(*aTuneStartValue);
+        Serial.print(F(" - Noise "));  Serial.print(*aTuneNoise);
+        Serial.print(F(" - Step "));  Serial.print(*aTuneStep);
+        Serial.print(F(" - SetLookbackSec "));  Serial.println(*aTuneLookBack);
+        Serial.print(F("Received temperature number to use for PID: "));  Serial.println(*useWhichTemperatureForPID);
+
 //        if (tuning) {
 //          Serial.println(F("Tuning parameters reset. Restarting tuning."));
 //          changeAutoTune(); //first call will cancel the tuning
 //          changeAutoTune(); //second call with set the values and start again
 //        }
-//        last_cmd = -1;
-//      }
-//    }
+        last_cmd = -1;
+      }
+    }
     else if (last_cmd == 'O')
     {
       if (port->available() >= 1) {
@@ -565,28 +574,47 @@ void loop() {
     //read temperature value (DS18B20)
     sensors.requestTemperatures(); // Temp abfragen
     currentTemperatureDS18B20 = (sensors.getTempC(insideThermometer) + tCorrectionDS18B20) * 100;
+    
+    //now that we have both temperatures, save the PID relevant temperature
+    if (*useWhichTemperatureForPID == 1){
+      currentPIDTtemperature = currentTemperature1023;
+    } else {
+      currentPIDTtemperature = currentTemperatureDS18B20;
+    }
 
     //send temperatures
     sendTemperaturesToPython();
     
-//    Serial.print("Sending ");
-//    Serial.println(millis() / 1000);
     lcd.setCursor(0,0);
-    lcd.print(millis() / 1000);
-    lcd.print(" S, ");
-    lcd.print(currentTemperatureDS18B20 / 100.0);
+    lcd.print("2:");
+    //use which indicator (*)
+    if (*useWhichTemperatureForPID == 2){
+      lcd.print("*");
+    } else {
+      lcd.print(" ");
+    }
+    static char temp[5]; //string mit aktueller temperatur (fuer display)
+    dtostrf(currentTemperatureDS18B20 / 100.0,3,1,temp);
+    lcd.print(temp);
+    lcd.print((char)223);
+    lcd.print("C");
     
-    lcd.setCursor(0,1);
     
+    lcd.setCursor(0,1);    
     if (pidSettingsReceived) {
-      static char cTemp[5]; //string mit aktueller temperatur (fuer display)
-      dtostrf(calculateTemperature(currentTemperature1023),3,1,cTemp);
-      static char sTemp[5]; //string mit gesetzter temperatur (fuer display)
-      dtostrf(Setpoint,3,1,sTemp);
-      lcd.print(cTemp);
+      //use which indicator (*)
+      lcd.print("1:");
+      if (*useWhichTemperatureForPID == 1){
+        lcd.print("*");
+      } else {
+        lcd.print(" ");
+      }
+      dtostrf(calculateTemperature(currentTemperature1023),3,1,temp); //change string mit temperatur (fuer display)
+      lcd.print(temp);
       lcd.print((char)223);
       lcd.print("C | ");
-      lcd.print(sTemp);
+      dtostrf(Setpoint,3,1,temp); //string mit gesetzter temperatur (fuer display)
+      lcd.print(temp);
       lcd.print((char)223);
       lcd.print("C  ");
     } else {
@@ -600,7 +628,11 @@ void loop() {
       for (int i = LASTANALYSISSIZE - 1; i >= 0; i--) {
         lastTemperatures[i + 1] = lastTemperatures[i];
       }
-      lastTemperatures[0] = currentTemperature1023;
+      if (*useWhichTemperatureForPID == 1){
+        lastTemperatures[0] = currentTemperature1023;
+      } else {
+        lastTemperatures[0] = currentTemperatureDS18B20;
+      }
       lastTemperaturesSize++;
       sendCounter = 0; //reset counter
     }
@@ -618,7 +650,7 @@ void loop() {
         }
 
         // -------- PID AND AUTOTUNE --------
-        Input = calculateTemperature(currentTemperature1023);
+        Input = calculateTemperature(currentPIDTtemperature);
 
         // See if we have to change from near to far PID parameter set
         //but only if we have filled the array
@@ -638,7 +670,11 @@ void loop() {
               pidNear = true;
               myPID.SetTunings(*pPid_near_p, *pPid_near_i, *pPid_near_d);
               //reset and fill with the current temperature, so that we can immediately switch back to far, instead of waiting for x minutes before array is filled
-              resetLastTemperaturesArray(currentTemperature1023, false);
+              if (*useWhichTemperatureForPID == 1) {
+                resetLastTemperaturesArray(currentTemperature1023, false);
+              } else {
+                resetLastTemperaturesArray(currentTemperatureDS18B20, false);
+              }
             }
           }
           //if already in near set

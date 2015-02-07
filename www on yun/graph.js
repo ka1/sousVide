@@ -200,6 +200,7 @@ function askForPidSettings(){
 		aTuneNoise = parseFloat(settings[0].aTuneNoise);
 		aTuneStartValue = parseFloat(settings[0].aTuneStartValue);
 		aTuneLookBack = parseFloat(settings[0].aTuneLookBack);
+		useWhichTemperatureForPID = parseInt(settings[0].useWhichTemperatureForPID);
 		
 		document.getElementById('wemoIp').value = wemoIp;
 		document.getElementById('pid_settemp').value = pid_settemp;
@@ -215,6 +216,7 @@ function askForPidSettings(){
 		document.getElementById('aTuneNoise').value = aTuneNoise;
 		document.getElementById('aTuneStartValue').value = aTuneStartValue;
 		document.getElementById('aTuneLookBack').value = aTuneLookBack;
+		document.getElementById('useWhichTemperatureForPID').value = useWhichTemperatureForPID;
 		pidSetTemp = pid_settemp;
 		
 	});
@@ -245,9 +247,10 @@ function sendPIDSettings(){
 	sendATuneNoise = document.getElementById('aTuneNoise').value;
 	sendATuneStartValue = document.getElementById('aTuneStartValue').value;
 	sendATuneLookBack = document.getElementById('aTuneLookBack').value;
-
+	sendUseWhichTemperatureForPID = document.getElementById('useWhichTemperatureForPID').value;
+	
 	//send these values
-	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd, sendPid_near_kp, sendPid_near_ki, sendPid_near_kd, sendPid_nearfardelta, sendPid_nearfartimewindow, sendATuneStep, sendATuneNoise, sendATuneStartValue, sendATuneLookBack).then(
+	sess.call("rpc:newPIDSettings", sendWemoIp, sendPid_settemp, sendPid_kp, sendPid_ki, sendPid_kd, sendPid_near_kp, sendPid_near_ki, sendPid_near_kd, sendPid_nearfardelta, sendPid_nearfartimewindow, sendATuneStep, sendATuneNoise, sendATuneStartValue, sendATuneLookBack, sendUseWhichTemperatureForPID).then(
 		function (result) {
 			//safe the values
 			pidSetTemp = parseFloat(sendPid_settemp);
@@ -634,6 +637,20 @@ function drawGraph(){
 	graphMain.append("line")
 		.attr("class","diffzero")
 		.attr("transform","translate(0," + yDiff(0) + ")")
+		.attr("x1",0)
+		.attr("x2",width);
+
+	//the difference .5 line
+	graphMain.append("line")
+		.attr("class","diffHalf")
+		.attr("transform","translate(0," + yDiff(.5) + ")")
+		.attr("x1",0)
+		.attr("x2",width);
+
+	//the difference -.5 line
+	graphMain.append("line")
+		.attr("class","diffHalf")
+		.attr("transform","translate(0," + yDiff(-.5) + ")")
 		.attr("x1",0)
 		.attr("x2",width);
 
