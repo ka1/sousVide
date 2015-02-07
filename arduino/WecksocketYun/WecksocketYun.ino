@@ -247,13 +247,18 @@ void setup() {
 
 float calculateTemperature(int rawTemp) {
   if (*useWhichTemperatureForPID == 1){
-    float temp = ((float)rawTemp / 1023.0) * ((float) * referenceVoltage);
-    temp = ((float) * range_min) + (temp * (((float) * range_max) - ((float) * range_min)));
-    return round(temp * 10.0) / 10.0;
+    return calculateTemperature1023(rawTemp);
   } else {
     return rawTemp / 100;
   }
 }
+
+float calculateTemperature1023(int rawTemp) {
+    float temp = ((float)rawTemp / 1023.0) * ((float) * referenceVoltage);
+    temp = ((float) * range_min) + (temp * (((float) * range_max) - ((float) * range_min)));
+    return round(temp * 10.0) / 10.0;
+}
+
 
 float revertTemperature(double celsius) {
   float temp = (celsius - (float) *range_min) / (((float) *range_max) - ((float) *range_min));
@@ -300,6 +305,7 @@ void getAnalog(int pin, int id) {
 //    currentTemperature1023 = revertTemperature(median(rawData) / 100.0);
 //  } else {
     currentTemperature1023 = median(rawData);
+    Serial.print(currentTemperature1023);
 //  }
 
 }
@@ -609,7 +615,7 @@ void loop() {
       } else {
         lcd.print(" ");
       }
-      dtostrf(calculateTemperature(currentTemperature1023),3,1,temp); //change string mit temperatur (fuer display)
+      dtostrf(calculateTemperature1023(currentTemperature1023),3,1,temp); //change string mit temperatur (fuer display)
       lcd.print(temp);
       lcd.print((char)223);
       lcd.print("C | ");
