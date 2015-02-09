@@ -38,11 +38,12 @@ function nearFarChangeReceived(topicUri, changeMessage) {
 		nearFar = 'N';
 	} else if (changeMessage == 'FAR') {
 		nearFar = 'F';
+	} else if (changeMessage == 'FAR(EMERGENCY)') {
+		nearFar = 'E';
 	} else {
 		nearFar = '?';
 	}
 	//alert("Changing between near and far parameter set: " + changeMessage);
-	//TODO: on screen message
 }
 
 function pidSkipped(topicUri, skipCount) {
