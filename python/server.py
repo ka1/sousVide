@@ -71,12 +71,12 @@ aTuneStep = 0
 aTuneNoise = 0
 aTuneStartValue = 0
 aTuneLookBack = 0
-useWhichTemperatureForPID = 0
+useWhichTemperatureForPID = 0 #1 for greisinger, 2 for DS18B20, is set upon runtime
 
 sendPushover = True
 
 lastDBentryTime = 0;
-enterEveryNSeconds = 10;
+enterEveryNSeconds = 1;
 
 #Pushover
 pushoverMessageCount = 0; #limit the number of message calls while running
@@ -130,6 +130,7 @@ class McuProtocol(LineReceiver):
 			payload = '1'
 		else:
 			payload = '0'
+			superError = False
 		if self.wsMcuFactory.debugSerial:
 			print "Sending Alarm:", payload
 		self.transport.write("X" + payload)
@@ -278,8 +279,8 @@ class McuProtocol(LineReceiver):
 		newUseWhichTemperatureForPID = int(newUseWhichTemperatureForPID)
 		
 		#Validate
-		if (newPidSettemp > 80 or newPidSettemp < 0):
-			raise Exception("Set Temperature must be between 0 C and 80 C")
+		if (newPidSettemp > 100 or newPidSettemp < 0):
+			raise Exception("Set Temperature must be between 0 C and 100 C")
 		if (newPID_kp > 1000000 or newPID_kp < 0):
 			raise Exception("PID - P must be between 0 and 1000000")
 		if (newPID_ki > 1000000 or newPID_ki < 0):
@@ -386,8 +387,6 @@ class McuProtocol(LineReceiver):
 				timeDistance = time.time() - lastDBentryTime
 				#it might be something like 9.93, so subtract 0.4
 				if (timeDistance > enterEveryNSeconds - 0.4):
-					print timeDistance
-				
 					insertData = (data[1], data[2])
 					sq3cur = sq3con.cursor()
 					try:
@@ -407,8 +406,13 @@ class McuProtocol(LineReceiver):
 					print "Temperature: ", calcTemp, "C (" , data[1], ")", ", DS18B20: ", (data[2] / 100.0), "C"
 					
 				#ALARM
-				if (superError == False and calcTemp > 80):
-					sendPushoverMessage("Temperature above 80C was received. No further processing will be done. Server is continuing but ignoring PID calls.",2)
+				if (useWhichTemperatureForPID == 1):
+					relevantTemperature = calcTemp
+				else:
+					relevantTemperature = data[2] / 100.0
+				
+				if (superError == False and relevantTemperature > pid_settemp + 2):
+					sendPushoverMessage("Temperature above 2C over set temperature was received. No further processing will be done. Server is continuing but ignoring PID calls.",2)
 					superError = True
 					
 					#Send alarm

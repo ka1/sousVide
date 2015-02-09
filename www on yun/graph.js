@@ -6,6 +6,7 @@ var sess = null;
 var wsuri = "ws://" + window.location.hostname + ":9000";
 var thermoRefVoltage, thermoRangeMax, thermoRangeMin;
 var pidSetTemp = 0;
+var nearFar = '';
 
 function resetPid(){
 	if (!confirm("Are you sure you want to reset the PID process?")){
@@ -33,6 +34,13 @@ function autoTuneDataReceived(topicUri, aTuneData) {
 
 function nearFarChangeReceived(topicUri, changeMessage) {
 	console.log("Changing between near and far parameter set: " + changeMessage);
+	if (changeMessage == 'NEAR'){
+		nearFar = 'N';
+	} else if (changeMessage == 'FAR') {
+		nearFar = 'F';
+	} else {
+		nearFar = '?';
+	}
 	//alert("Changing between near and far parameter set: " + changeMessage);
 	//TODO: on screen message
 }
@@ -102,7 +110,7 @@ function newRawDataReceived(topicUri, singleDatum) {
 	graphMain.select("#blurTop").attr("transform","translate(0," + y(pidSetTemp + pidSetTempBlur) + ")");
 	graphMain.select("#blurBottom").attr("transform","translate(0," + y(pidSetTemp - pidSetTempBlur) + ")");
 	
-	currentTemperatureText.text(singleDatum.Temperatur + " / " + singleDatum.Temperatur2 + "°C");
+	currentTemperatureText.text(singleDatum.Temperatur + " / " + singleDatum.Temperatur2 + "°C," + nearFar);
 	console.log("received " + singleDatum.Temperatur + "C / " + singleDatum.Temperatur2 + "C");
 	return;
 }

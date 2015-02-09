@@ -249,7 +249,7 @@ float calculateTemperature(int rawTemp) {
   if (*useWhichTemperatureForPID == 1){
     return calculateTemperature1023(rawTemp);
   } else {
-    return rawTemp / 100;
+    return round((rawTemp / 100.0) * 10.0) / 10.0;
   }
 }
 
@@ -257,6 +257,38 @@ float calculateTemperature1023(int rawTemp) {
     float temp = ((float)rawTemp / 1023.0) * ((float) * referenceVoltage);
     temp = ((float) * range_min) + (temp * (((float) * range_max) - ((float) * range_min)));
     return round(temp * 10.0) / 10.0;
+}
+
+float calculateTemperatureDS18B20(int rawTemp){
+//put into array, two dimensional [0][0] = temp [0][1] = correction and then interpolate linearly
+//-43.1377  0.20015
+//-39.3466  0.0966
+//-34.2368  0.11182
+//-29.0969  0.03443
+//-24.1398  0.01481
+//-19.2454  -0.06715
+//-14.0779  -0.10964
+//-9.10834  -0.14166
+//-4.08784  -0.162158
+//0.769446  -0.2069459
+//5.831063  -0.206063
+//10.84934  -0.22434
+//15.79473  -0.23223
+//20.79082  -0.22832
+//25.70361  -0.20361
+//30.74484  -0.18234
+//35.60317  -0.16567
+//40.57861  -0.14111
+//45.68797  -0.12547
+//50.56738  -0.06738
+//55.58933  -0.02683
+//60.51409  0.04841
+//65.35461  0.08289
+//70.54241  0.14509
+//75.40949  0.21551
+//80.41012  0.33988
+//85.26303  0.42447
+
 }
 
 
@@ -305,7 +337,6 @@ void getAnalog(int pin, int id) {
 //    currentTemperature1023 = revertTemperature(median(rawData) / 100.0);
 //  } else {
     currentTemperature1023 = median(rawData);
-    Serial.print(currentTemperature1023);
 //  }
 
 }
@@ -361,7 +392,12 @@ int getMaxValue(int theArray[]) {
 }
 
 int getMinValue(int theArray[]) {
-  int minValue = 1023;
+  int minValue;
+  if (*useWhichTemperatureForPID == 1){
+    minValue = 1023;
+  } else {
+    minValue = 10000; //100C / 100
+  }
   for (int i = 0; i < LASTANALYSISSIZE; i++) {
     if (theArray[i] > -1) {
       minValue = min(theArray[i], minValue);
@@ -702,7 +738,16 @@ void loop() {
                 Serial.print(F("CHANGING TO FAR PARAMETER SET, MIN WAS "));
                 Serial.print(theMin);
                 Serial.print(F(", MAX WAS "));
-                Serial.println(theMax);
+                Serial.print(theMax);
+                Serial.print(F(", DELTA IS "));
+                Serial.println(*pPid_nearfardelta);
+                
+//                for (int i = 0; i < LASTANALYSISSIZE; i++) {
+//                  if (lastTemperatures[i] > -1) {
+//                    Serial.println(calculateTemperature(lastTemperatures[i]));
+//                  }
+//                }
+                
                 pidNear = false;
                 myPID.ResetIterm();
                 myPID.SetTunings(*pPid_p, *pPid_i, *pPid_d);
